@@ -26,10 +26,10 @@
  *
  * Writes data to a "regular" (not pin, extend or counter) NV index.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path of the NV index to write
- * @param [in] data The data to write to the NV index
- * @param [in] size The size of data in bytes
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path of the NV index to write
+ * @param[in] data The data to write to the NV index
+ * @param[in] size The size of data in bytes
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, nvPath, or data is NULL.
@@ -45,6 +45,20 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvWrite(
@@ -96,7 +110,7 @@ Fapi_NvWrite(
 
     return_if_error_reset_state(r, "NV_Write");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -106,10 +120,10 @@ Fapi_NvWrite(
  *
  * Call Fapi_NvWrite_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path of the NV index to write
- * @param [in] data The data to write to the NV index
- * @param [in] size The size of data in bytes
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path of the NV index to write
+ * @param[in] data The data to write to the NV index
+ * @param[in] size The size of data in bytes
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, nvPath, or data is NULL.
@@ -125,6 +139,8 @@ Fapi_NvWrite(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_NvWrite_Async(
@@ -151,6 +167,7 @@ Fapi_NvWrite_Async(
     /* Helpful alias pointers */
     IFAPI_NV_Cmds * command = &context->nv_cmd;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize NV_Write");
 
@@ -159,6 +176,9 @@ Fapi_NvWrite_Async(
     memset(&context->nv_cmd, 0, sizeof(IFAPI_NV_Cmds));
     command->offset = 0;
     command->data = NULL;
+
+
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->nvPath, nvPath, r, error_cleanup);
 
     commandData = malloc(size);
@@ -168,20 +188,15 @@ Fapi_NvWrite_Async(
     command->data = commandData;
 
     context->primary_state = PRIMARY_INIT;
-    r = ifapi_get_sessions_async(context,
-                                 IFAPI_SESSION_GENEK | IFAPI_SESSION1,
-                                 TPMA_SESSION_DECRYPT, 0);
-    goto_if_error_reset_state(r, "Create sessions", error_cleanup);
-
-    context->state = NV_WRITE_WAIT_FOR_SESSION;
     command->numBytes = size;
-    if (context->state == _FAPI_STATE_INIT)
-        ifapi_session_init(context);
-    context->state = NV_WRITE_WAIT_FOR_SESSION;
-    LOG_TRACE("finsihed");
+
+    /* Initialize the context state for this operation. */
+    context->state = NV_WRITE_READ;
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->nvPath);
     SAFE_FREE(command->data);
     return r;
@@ -191,7 +206,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_NvWrite.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -203,6 +218,19 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvWrite_Finish(
@@ -220,25 +248,16 @@ Fapi_NvWrite_Finish(
     IFAPI_NV_Cmds * command = &context->nv_cmd;
 
     switch (context->state) {
-    statecase(context->state, NV_WRITE_WAIT_FOR_SESSION);
-//TODO: Pass the namealg of the NV index into the session to be created
-        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile);
-        return_try_again(r);
-        goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
-
-        context->state = NV_WRITE_READ;
-        fallthrough;
-
     statecase(context->state, NV_WRITE_READ);
         /* First check whether the file in object store can be updated. */
         r = ifapi_keystore_check_writeable(&context->keystore, &context->io, command->nvPath);
         goto_if_error_reset_state(r, "Check whether update object store is possible.", error_cleanup);
 
+        /* Write to the NV index. */
         r = ifapi_nv_write(context, command->nvPath, command->offset,
                            command->data, command->numBytes);
 
         return_try_again(r);
-
         goto_if_error_reset_state(r, " FAPI NV Write", error_cleanup);
 
 
@@ -253,7 +272,6 @@ Fapi_NvWrite_Finish(
         goto_if_error_reset_state(r, "Could not open: %sh", error_cleanup,
                                   command->nvPath);
 
-        context->state = NV_WRITE_WRITE;
         fallthrough;
 
     statecase(context->state, NV_WRITE_WRITE);
@@ -261,19 +279,22 @@ Fapi_NvWrite_Finish(
         r = ifapi_keystore_store_finish(&context->keystore, &context->io);
         return_try_again(r);
         return_if_error_reset_state(r, "write_finish failed");
+
         fallthrough;
 
     statecase(context->state, NV_WRITE_CLEANUP)
+        /* Cleanup the authorization session. */
         r = ifapi_cleanup_session(context);
         try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
-        context->state =  _FAPI_STATE_INIT;
+        context->state = _FAPI_STATE_INIT;
         break;
 
     statecasedefault(context->state);
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     ifapi_cleanup_ifapi_object(&command->nv_object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
@@ -284,6 +305,6 @@ error_cleanup:
     SAFE_FREE(jso);
     ifapi_session_clean(context);
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

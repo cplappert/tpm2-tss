@@ -174,8 +174,12 @@ Esys_Clear_Async(
     /* Calculate the cpHash Values */
     r = init_session_tab(esysContext, shandle1, shandle2, shandle3);
     return_state_if_error(r, _ESYS_STATE_INIT, "Initialize session resources");
-    iesys_compute_session_value(esysContext->session_tab[0],
+    if (authHandleNode != NULL)
+        iesys_compute_session_value(esysContext->session_tab[0],
                 &authHandleNode->rsrc.name, &authHandleNode->auth);
+    else
+        iesys_compute_session_value(esysContext->session_tab[0], NULL, NULL);
+
     iesys_compute_session_value(esysContext->session_tab[1], NULL, NULL);
     iesys_compute_session_value(esysContext->session_tab[2], NULL, NULL);
 
@@ -194,6 +198,11 @@ Esys_Clear_Async(
     r = Tss2_Sys_ExecuteAsync(esysContext->sys);
     return_state_if_error(r, _ESYS_STATE_INTERNALERROR,
                           "Finish (Execute Async)");
+
+    /* If the command authorization is LOCKOUT we need to
+     * recompute session value with an empty auth */
+    if (authHandle == ESYS_TR_RH_LOCKOUT)
+        iesys_compute_session_value(esysContext->session_tab[0], NULL, NULL);
 
     esysContext->state = _ESYS_STATE_SENT;
 

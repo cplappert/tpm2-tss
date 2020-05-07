@@ -26,20 +26,7 @@
 #include "util/log.h"
 #include "util/aux_util.h"
 
-/** Test the FAPI functions for key creation and usage.
- *
- * Tested FAPI commands:
- *  - Fapi_Provision()
- *  - Fapi_CreateKey()
- *  - Fapi_Sign(9
- *  - Fapi_Delete(9
- *
- * @param[in,out] context The FAPI_CONTEXT.
- * @retval EXIT_FAILURE
- * @retval EXIT_SUCCESS
- */
-
-#define SIZE 2000
+#define SIZE 128
 
 const char *priv_pem =
     "-----BEGIN PRIVATE KEY-----\n"
@@ -90,7 +77,7 @@ char *userDataTest = "test";
                              r = TSS2_FAPI_RC_GENERAL_FAILURE; \
                              goto error_cleanup; }
 
-TSS2_RC
+static TSS2_RC
 signatureCallback(
     FAPI_CONTEXT  *context,
     char    const *description,
@@ -174,17 +161,37 @@ error_cleanup:
     return r;
 }
 
+/** Test the FAPI functions for encryption and decryption.
+ *
+ * Tested FAPI commands:
+ *  - Fapi_Provision()
+ *  - Fapi_Import()
+ *  - Fapi_CreateKey()
+ *  - Fapi_SetSignCB()
+ *  - Fapi_Encrypt()
+ *  - Fapi_Decrypt()
+ *  - Fapi_Free()
+ *
+ * Tested Policies:
+ *  - PolicySigned
+ *
+ * @param[in,out] context The FAPI_CONTEXT.
+ * @retval EXIT_FAILURE
+ * @retval EXIT_SUCCESS
+ */
 int
-test_fapi_data_crypt_rsa(FAPI_CONTEXT *context)
+test_fapi_data_crypt(FAPI_CONTEXT *context)
 {
 
     TSS2_RC r;
+    long policy_size;
     const char *policy_name = "/policy/pol_signed";
     const char *policy_file = TOP_SOURCEDIR "/test/data/fapi/policy/pol_signed.json";
     FILE *stream = NULL;
     char *json_policy = NULL;
-    long policy_size;
-    char *cipherText = NULL;
+
+    uint8_t *cipherText = NULL;
+    size_t cipherTextSize;
 
     r = Fapi_Provision(context, NULL, NULL, NULL);
     goto_if_error(r, "Error Fapi_Provision", error);
@@ -215,7 +222,7 @@ test_fapi_data_crypt_rsa(FAPI_CONTEXT *context)
     r = Fapi_Import(context, policy_name, json_policy);
     goto_if_error(r, "Error Fapi_Import", error);
 
-    r = Fapi_CreateKey(context, "HS/SRK/myRsaCryptKey", "restricted,decrypt",
+    r = Fapi_CreateKey(context, "HS/SRK/myRsaCryptKey", "decrypt",
                        policy_name, NULL);
     goto_if_error(r, "Error Fapi_CreateKey", error);
 
@@ -228,16 +235,20 @@ test_fapi_data_crypt_rsa(FAPI_CONTEXT *context)
     r = Fapi_SetSignCB(context, signatureCallback, userDataTest);
     goto_if_error(r, "Error SetPolicySignatureCallback", error);
 
-    r = Fapi_Encrypt(context, "HS/SRK/myRsaCryptKey", policy_name, &plainText[0],
-                     SIZE, &cipherText);
+    r = Fapi_Encrypt(context, "HS/SRK/myRsaCryptKey", &plainText[0],
+                     SIZE, &cipherText, &cipherTextSize);
+
+    if (r == TSS2_FAPI_RC_NOT_IMPLEMENTED) {
+        goto skip;
+    }
+
     goto_if_error(r, "Error Fapi_Encrypt", error);
 
     uint8_t *plainText2 = NULL;
     size_t plainText2_size = 0;
 
-    fprintf(stderr, "\n%s\n", cipherText);
-
-    r = Fapi_Decrypt(context, cipherText, &plainText2, &plainText2_size);
+    r = Fapi_Decrypt(context, "HS/SRK/myRsaCryptKey", cipherText, cipherTextSize,
+                     &plainText2, &plainText2_size);
     goto_if_error(r, "Error Fapi_Encrypt", error);
 
     if (plainText2_size != SIZE ||
@@ -249,20 +260,26 @@ test_fapi_data_crypt_rsa(FAPI_CONTEXT *context)
     Fapi_Free(cipherText);
     Fapi_Free(plainText2);
     Fapi_Free(json_policy);
-    Fapi_Delete(context, "P_RSA");
+    Fapi_Delete(context, "/");
 
     return EXIT_SUCCESS;
 
 error:
     Fapi_Free(cipherText);
     Fapi_Free(json_policy);
-    Fapi_Delete(context, "P_RSA");
+    Fapi_Delete(context, "/");
 
     return EXIT_FAILURE;
+
+ skip:
+    Fapi_Free(json_policy);
+    Fapi_Delete(context, "/");
+
+    return EXIT_SKIP;
 }
 
 int
 test_invoke_fapi(FAPI_CONTEXT *fapi_context)
 {
-    return test_fapi_data_crypt_rsa(fapi_context);
+    return test_fapi_data_crypt(fapi_context);
 }

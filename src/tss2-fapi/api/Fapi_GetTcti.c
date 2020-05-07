@@ -26,12 +26,13 @@
  * Note: The application must ensure that this TSS2_TCTI_CONTEXT is not being used in parallel to
  *       the processing of a FAPI command.
  *
- * @param [in,out] context The FAPI_CONTEXT
- * @param [out] tcti The TSS2_TCTI_CONTEXT used to talk to the current TPM.
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] tcti The TSS2_TCTI_CONTEXT used to talk to the current TPM.
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, tcti is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
+ * @retval TSS2_FAPI_RC_NO_TPM: if FAPI was started in non-TPM mode.
  */
 TSS2_RC
 Fapi_GetTcti(
@@ -46,9 +47,11 @@ Fapi_GetTcti(
     check_not_null(context);
     check_not_null(tcti);
 
+    /* Check if FAPI was started in a non-TPM mode. */
     if (!context->esys)
         return_error(TSS2_FAPI_RC_NO_TPM, "Fapi is running in non-TPM mode");
 
+    /* Retrieve the TCTI from ESYS. */
     r = Esys_GetTcti(context->esys, tcti);
     return_if_error(r, "Esys_GetTcti");
 

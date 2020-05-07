@@ -23,11 +23,11 @@
  *
  * Reads from a given PCR and returns the value and the event log.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pcrIndex The index of the PCR to read
- * @param [out] pcrValue The value of the PCR. May be NULL
- * @param [out] pcrValueSize The size of value in bytes. May be NULL
- * @param [out] pcrLog The PCR log. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pcrIndex The index of the PCR to read
+ * @param[out] pcrValue The value of the PCR. May be NULL
+ * @param[out] pcrValueSize The size of value in bytes. May be NULL
+ * @param[out] pcrLog The PCR log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, pcrValue or pcrValueSize
@@ -39,6 +39,21 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_FAPI_RC_NO_CERT if an error did occur during certificate downloading.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_PcrRead(
@@ -89,7 +104,7 @@ Fapi_PcrRead(
 
     return_if_error_reset_state(r, "NV_ReadWithLog");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -99,8 +114,8 @@ Fapi_PcrRead(
  *
  * Call Fapi_PcrRead_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pcrIndex The index of the PCR to read
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pcrIndex The index of the PCR to read
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -111,6 +126,9 @@ Fapi_PcrRead(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_PcrRead_Async(
@@ -129,14 +147,18 @@ Fapi_PcrRead_Async(
     /* Helpful alias pointers */
     IFAPI_PCR * command = &context->cmd.pcr;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize PcrRead");
 
+    /* Determine the banks to be used for the requested PCR based on
+       the default cryptographic profile. */
     pcr_selection = context->profiles.default_profile.pcr_selection;
 
     r = ifapi_filter_pcr_selection_by_index(&pcr_selection, &pcrIndex, 1);
     return_if_error(r, "PCR selection");
 
+    /* Perform the PCR read operation. */
     r = Esys_PCR_Read_Async(context->esys,
                             ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
                             &pcr_selection);
@@ -145,9 +167,10 @@ Fapi_PcrRead_Async(
     /* Used for retrieving the eventlog during finish*/
     command->pcrIndex = pcrIndex;
 
+    /* Initialize the context state for this operation. */
     context->state = PCR_READ_READ_PCR;
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -155,10 +178,10 @@ Fapi_PcrRead_Async(
  *
  * This function should be called after a previous Fapi_PcrRead_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] pcrValue The value of the PCR. May be NULL
- * @param [out] pcrValueSize The size of value in bytes. May be NULL
- * @param [out] pcrLog The PCR log. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] pcrValue The value of the PCR. May be NULL
+ * @param[out] pcrValueSize The size of value in bytes. May be NULL
+ * @param[out] pcrLog The PCR log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, pcrValue or pcrValueSize
@@ -171,6 +194,9 @@ Fapi_PcrRead_Async(
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_PcrRead_Finish(
@@ -201,6 +227,7 @@ Fapi_PcrRead_Finish(
             return_try_again(r);
             goto_if_error_reset_state(r, "PCR_ReadWithLog_Finish", cleanup);
 
+            /* Copy the return values to the output parameters. */
             if (pcrValueSize)
                 *pcrValueSize = command->pcrValues->digests[0].size;
             if (pcrValue) {
@@ -212,16 +239,18 @@ Fapi_PcrRead_Finish(
                        command->pcrValues->digests[0].size);
             }
             SAFE_FREE(command->pcrValues);
+
+            /* If no event log was requested the operation is now complete. */
             if (!pcrLog) {
-                context->state =  _FAPI_STATE_INIT;
+                context->state = _FAPI_STATE_INIT;
                 break;
             }
 
+            /* Retrieve the eventlog for the requestion PCR. */
             r = ifapi_eventlog_get_async(&context->eventlog, &context->io,
                                          &command->pcrIndex, 1);
             goto_if_error(r, "Error getting event log", cleanup);
 
-            context->state = PCR_READ_READ_EVENT_LIST;
             fallthrough;
 
         statecase(context->state, PCR_READ_READ_EVENT_LIST);
@@ -229,14 +258,15 @@ Fapi_PcrRead_Finish(
             return_try_again(r);
             goto_if_error(r, "Error getting event log", cleanup);
 
-            context->state =  _FAPI_STATE_INIT;
+            context->state = _FAPI_STATE_INIT;
             break;
 
         statecasedefault(context->state);
     }
 
 cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     SAFE_FREE(command->pcrValues);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

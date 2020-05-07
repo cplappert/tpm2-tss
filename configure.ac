@@ -1,10 +1,10 @@
 # SPDX-License-Identifier: BSD-2-Clause
-# Copyright (c) 2015 - 2018 Intel Corporation
-# Copyright (c) 2018 Fraunhofer SIT sponsored by Infineon Technologies AG
+# Copyright (c) 2015 - 2020 Intel Corporation
+# Copyright (c) 2018 - 2020 Fraunhofer SIT sponsored by Infineon Technologies AG
 # All rights reserved.
 
 AC_INIT([tpm2-tss],
-        [2.4.0-rc0],
+        [2.4.1-rc0],
         [https://github.com/tpm2-software/tpm2-tss/issues],
         [],
         [https://github.com/tpm2-software/tpm2-tss])
@@ -36,14 +36,22 @@ PKG_INSTALLDIR()
 # Check OS and set library and compile flags accordingly
 case "${host_os}" in
     *nto-qnx*)
+        HOSTOS='QNX'
         ADD_COMPILER_FLAG([-D_QNX_SOURCE])
         LIBSOCKET_LDFLAGS="-lsocket"
         ;;
+    *bsd* | *BSD*)
+        HOSTOS='BSD'
+        LIBSOCKET_LDFLAGS=""
+        ;;
     *)
+        #Assume linux
+        HOSTOS='Linux'
         LIBSOCKET_LDFLAGS=""
         ;;
 esac
 AC_SUBST([LIBSOCKET_LDFLAGS])
+AC_SUBST([HOSTOS])
 
 # runstatedir is only defined in the yet unreleased Autoconf 2.70
 AC_ARG_WITH([runstatedir],
@@ -74,7 +82,6 @@ AC_ARG_WITH([tmpfilesdir],
             [with_tmpfilesdir="${sysconfdir}/tmpfiles.d"])
 AC_SUBST(tmpfilesdir, $with_tmpfilesdir)
 
-AC_CHECK_FUNCS([strndup])
 AC_ARG_ENABLE([unit],
             [AS_HELP_STRING([--enable-unit],
                             [build cmocka unit tests])],,
@@ -94,6 +101,7 @@ AC_ARG_ENABLE([esapi],
 
 AM_CONDITIONAL(ESAPI, test "x$enable_esapi" = "xyes")
 
+AC_CHECK_FUNC([strndup],[],[AC_MSG_ERROR([strndup function not found])])
 AC_CHECK_FUNCS([reallocarray])
 AC_ARG_ENABLE([fapi],
             [AS_HELP_STRING([--enable-fapi],
@@ -138,13 +146,9 @@ AM_CONDITIONAL(ESYS_GCRYPT, test "x$with_crypto" = "xgcrypt")
 
 AS_IF([test "x$enable_esapi" = xyes],
       [AS_IF([test "x$with_crypto" = xgcrypt], [
-           AC_CHECK_HEADER([gcrypt.h],,
-               [AC_MSG_ERROR([Missing required header: gcrypt.h.])])
-           AC_CHECK_LIB([gcrypt],
-               [gcry_mac_open],,
-               [AC_MSG_ERROR([Missing required library: gcrypt.])])
-           TSS2_ESYS_CFLAGS_CRYPTO=""
-           TSS2_ESYS_LDFLAGS_CRYPTO="-lgcrypt"
+           AM_PATH_LIBGCRYPT([1.6.0], [], [AC_MSG_ERROR([Missing required gcrypt library])])
+           TSS2_ESYS_CFLAGS_CRYPTO="$LIBGCRYPT_CFLAGS"
+           TSS2_ESYS_LDFLAGS_CRYPTO="$LIBGCRYPT_LIBS"
        ], [test "x$with_crypto" = xossl], [
            PKG_CHECK_MODULES([LIBCRYPTO], [libcrypto])
            AC_DEFINE([OSSL], [1], [OpenSSL cryptographic backend])
@@ -233,7 +237,7 @@ AC_ARG_ENABLE([integration],
     [AS_HELP_STRING([--enable-integration],
         [build and execute integration tests])],,
     [enable_integration=no])
-AS_IF([test "x$enable_integration" = "xyes"],
+AS_IF([test "x$enable_integration" = "xyes" -a "$HOSTOS" = "Linux"],
       [ERROR_IF_NO_PROG([tpm_server])
        ERROR_IF_NO_PROG([ss])
        ERROR_IF_NO_PROG([ps])

@@ -26,20 +26,27 @@
  *
  * Returns the description of a previously stored object.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path of the object for which the description is loaded
- * @param [out] description The description of the object
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path of the object for which the description is loaded
+ * @param[out] description The description of the object
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, path or description is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if path does not map to a FAPI entity.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the updated data cannot be loaded.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
  */
 TSS2_RC
 Fapi_GetDescription(
@@ -49,26 +56,12 @@ Fapi_GetDescription(
 {
     LOG_TRACE("called for context:%p", context);
 
-    TSS2_RC r, r2;
+    TSS2_RC r;
 
     /* Check for NULL parameters */
     check_not_null(context);
     check_not_null(path);
     check_not_null(description);
-
-    /* Check whether TCTI and ESYS are initialized */
-    return_if_null(context->esys, "Command can't be executed in none TPM mode.",
-                   TSS2_FAPI_RC_NO_TPM);
-
-    /* If the async state automata of FAPI shall be tested, then we must not set
-       the timeouts of ESYS to blocking mode.
-       During testing, the mssim tcti will ensure multiple re-invocations.
-       Usually however the synchronous invocations of FAPI shall instruct ESYS
-       to block until a result is available. */
-#ifndef TEST_FAPI_ASYNC
-    r = Esys_SetTimeout(context->esys, TSS2_TCTI_TIMEOUT_BLOCK);
-    return_if_error_reset_state(r, "Set Timeout to blocking");
-#endif /* TEST_FAPI_ASYNC */
 
     r = Fapi_GetDescription_Async(context, path);
     return_if_error_reset_state(r, "Path_SetDescription");
@@ -84,13 +77,9 @@ Fapi_GetDescription(
         r = Fapi_GetDescription_Finish(context, description);
     } while ((r & ~TSS2_RC_LAYER_MASK) == TSS2_BASE_RC_TRY_AGAIN);
 
-    /* Reset the ESYS timeout to non-blocking, immediate response. */
-    r2 = Esys_SetTimeout(context->esys, 0);
-    return_if_error(r2, "Set Timeout to non-blocking");
-
     return_if_error_reset_state(r, "Path_SetDescription");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -100,19 +89,23 @@ Fapi_GetDescription(
  *
  * Call Fapi_GetDescription_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path of the object for which the description is loaded
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path of the object for which the description is loaded
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if path does not map to a FAPI entity.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the updated data cannot be loaded.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 Fapi_GetDescription_Async(
@@ -128,14 +121,14 @@ Fapi_GetDescription_Async(
     check_not_null(context);
     check_not_null(path);
 
-    r = ifapi_session_init(context);
-    return_if_error(r, "Initialize GetDescription");
-
+    /* Load the object metadata from keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, path);
     return_if_error2(r, "Could not open: %s", path);
 
-    context->state =  PATH_GET_DESCRIPTION_READ;
-    LOG_TRACE("finsihed");
+    /* Initialize the context state for this operation. */
+    context->state = PATH_GET_DESCRIPTION_READ;
+
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -143,8 +136,8 @@ Fapi_GetDescription_Async(
  *
  * This function should be called after a previous Fapi_GetDescription_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] description The description of the object
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] description The description of the object
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or description is NULL.
@@ -156,6 +149,9 @@ Fapi_GetDescription_Async(
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 Fapi_GetDescription_Finish(
@@ -177,9 +173,9 @@ Fapi_GetDescription_Finish(
             return_try_again(r);
             return_if_error_reset_state(r, "read_finish failed");
 
+            /* Retrieve the description from the metadata object. */
             r = ifapi_get_description(&object, description);
             ifapi_cleanup_ifapi_object(&object);
-
             return_if_error_reset_state(r, "Get description");
 
             context->state = _FAPI_STATE_INIT;
@@ -188,7 +184,8 @@ Fapi_GetDescription_Finish(
 
         statecasedefault(context->state);
     }
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
+    /* Cleanup any intermediate results and state stored in the context. */
     ifapi_cleanup_ifapi_object(&object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);

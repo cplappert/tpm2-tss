@@ -24,21 +24,21 @@
  * Given a set of PCRs and a restricted signing key, it will sign those PCRs and
  * return the quote.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pcrList The list of PCRs that are to be quoted
- * @param [in] pcrListSize The size of pcrList in bytes
- * @param [in] keyPath The path to the signing key
- * @param [in] quoteType The type of quote. May be NULL
- * @param [in] qualifyingData A nonce provided by the caller. May be NULL
- * @param [in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
- *             if qualifyingData is NULL
- * @param [out] quoteInfo A JSON-encoded structure holding the inputs to the
- *              quote operation
- * @param [out] signature The signature of the PCRs
- * @param [out] signatureSize The size of the signature in bytes. May be NULL
- * @param [out] pcrLog The log of the PCR. May be NULL
- * @param [out] certificate The certificate associated with the signing key. May
- *              be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pcrList The list of PCRs that are to be quoted
+ * @param[in] pcrListSize The size of pcrList in bytes
+ * @param[in] keyPath The path to the signing key
+ * @param[in] quoteType The type of quote. May be NULL
+ * @param[in] qualifyingData A nonce provided by the caller. May be NULL
+ * @param[in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
+ *            if qualifyingData is NULL
+ * @param[out] quoteInfo A JSON-encoded structure holding the inputs to the
+ *             quote operation
+ * @param[out] signature The signature of the PCRs
+ * @param[out] signatureSize The size of the signature in bytes. May be NULL
+ * @param[out] pcrLog The log of the PCR. May be NULL
+ * @param[out] certificate The certificate associated with the signing key. May
+ *             be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, pcrList, keyPath,
@@ -54,6 +54,19 @@
  *         operation already pending.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Quote(
@@ -117,7 +130,7 @@ Fapi_Quote(
 
     return_if_error_reset_state(r, "PCR_Quote");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -128,14 +141,14 @@ Fapi_Quote(
  *
  * Call Fapi_Quote_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pcrList The list of PCRs that are to be quoted
- * @param [in] pcrListSize The size of pcrList in bytes
- * @param [in] keyPath The path to the signing key
- * @param [in] quoteType The type of quote. May be NULL
- * @param [in] qualifyingData A nonce provided by the caller. May be NULL
- * @param [in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
- *             if qualifyingData is NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pcrList The list of PCRs that are to be quoted
+ * @param[in] pcrListSize The size of pcrList in bytes
+ * @param[in] keyPath The path to the signing key
+ * @param[in] quoteType The type of quote. May be NULL
+ * @param[in] qualifyingData A nonce provided by the caller. May be NULL
+ * @param[in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
+ *            if qualifyingData is NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, pcrList or keyPath
@@ -151,6 +164,8 @@ Fapi_Quote(
  *         operation already pending.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_Quote_Async(
@@ -195,6 +210,7 @@ Fapi_Quote_Async(
     /* Helpful alias pointers */
     IFAPI_PCR * command = &context->cmd.pcr;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize Quote");
 
@@ -202,9 +218,6 @@ Fapi_Quote_Async(
         return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Only quote type TPM-Quote is allowed");
     }
-
-    r = ifapi_session_init(context);
-    return_if_error(r, "Initialize PCR_Quote");
 
     /* Store parameters in context */
     strdup_check(command->keyPath, keyPath, r, error_cleanup);
@@ -222,10 +235,14 @@ Fapi_Quote_Async(
     } else {
         command->qualifyingData.size = 0;
     }
+
+    /* Initialize the context state for this operation. */
     context->state = PCR_QUOTE_WAIT_FOR_GET_CAP;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->keyPath);
     SAFE_FREE(command->pcrList);
     return r;
@@ -235,14 +252,14 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_Quote_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] quoteInfo A JSON-encoded structure holding the inputs to the
- *              quote operation
- * @param [out] signature The signature of the PCRs
- * @param [out] signatureSize The size of the signature in bytes. May be NULL
- * @param [out] pcrLog The log of the PCR. May be NULL
- * @param [out] certificate The certificate associated with the signing key. May
- *              be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] quoteInfo A JSON-encoded structure holding the inputs to the
+ *             quote operation
+ * @param[out] signature The signature of the PCRs
+ * @param[out] signatureSize The size of the signature in bytes. May be NULL
+ * @param[out] pcrLog The log of the PCR. May be NULL
+ * @param[out] certificate The certificate associated with the signing key. May
+ *             be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, quoteInfor or signature
@@ -255,6 +272,18 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Quote_Finish(
@@ -289,26 +318,27 @@ Fapi_Quote_Finish(
                                                     command->pcrListSize);
             goto_if_error_reset_state(r, "Filtering banks for PCR list.", error_cleanup);
 
+            /* Get a session for authorization of the quote operation. */
             r = ifapi_get_sessions_async(context,
                                          IFAPI_SESSION_GENEK | IFAPI_SESSION1,
                                          TPMA_SESSION_DECRYPT, 0);
             goto_if_error_reset_state(r, "Create sessions", error_cleanup);
 
-            context->state = PCR_QUOTE_WAIT_FOR_SESSION;
             fallthrough;
 
         statecase(context->state, PCR_QUOTE_WAIT_FOR_SESSION);
+            /* Retrieve the profile information. */
             r = ifapi_profiles_get(&context->profiles, command->keyPath, &profile);
             goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
 
-            r = ifapi_get_sessions_finish(context, profile);
+            r = ifapi_get_sessions_finish(context, profile, profile->nameAlg);
             return_try_again(r);
             goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
 
+            /* Load the key into the TPM. */
             r = ifapi_load_keys_async(context, command->keyPath);
             goto_if_error(r, "Load keys.", error_cleanup);
 
-            context->state = PCR_QUOTE_WAIT_FOR_KEY;
             fallthrough;
 
         statecase(context->state, PCR_QUOTE_WAIT_FOR_KEY);
@@ -318,14 +348,15 @@ Fapi_Quote_Finish(
             return_try_again(r);
             goto_if_error_reset_state(r, " Load key.", error_cleanup);
 
-            context->state = PCR_QUOTE_AUTHORIZE;
             fallthrough;
 
         statecase(context->state, PCR_QUOTE_AUTHORIZE);
-        r = ifapi_authorize_object(context, command->key_object, &auth_session);
+            /* Authorize the session for use with the key. */
+            r = ifapi_authorize_object(context, command->key_object, &auth_session);
             return_try_again(r);
             goto_if_error(r, "Authorize key.", error_cleanup);
 
+            /* Perform the Quote operation. */
             r = Esys_Quote_Async(context->esys, command->handle,
                                  auth_session, ESYS_TR_NONE, ESYS_TR_NONE,
                                  &command->qualifyingData,
@@ -333,7 +364,6 @@ Fapi_Quote_Finish(
                                  &command->pcr_selection);
             goto_if_error(r, "Error: PCR_Quote", error_cleanup);
 
-            context->state = PCR_QUOTE_AUTH_SENT;
             fallthrough;
 
         statecase(context->state, PCR_QUOTE_AUTH_SENT);
@@ -344,11 +374,11 @@ Fapi_Quote_Finish(
             return_try_again(r);
             goto_if_error(r, "Error: PCR_Quote", error_cleanup);
 
+            /* Flush the key used for the quote. */
             r = Esys_FlushContext_Async(context->esys, command->handle);
             goto_if_error(r, "Error: FlushContext", error_cleanup);
 
-            context->state = PCR_QUOTE_WAIT_FOR_FLUSH;
-            return TSS2_FAPI_RC_TRY_AGAIN;
+            fallthrough;
 
         statecase(context->state, PCR_QUOTE_WAIT_FOR_FLUSH);
             r = Esys_FlushContext_Finish(context->esys);
@@ -356,31 +386,37 @@ Fapi_Quote_Finish(
             goto_if_error(r, "Error: Sign", error_cleanup);
 
             sig_key_object = command->key_object;
+            /* Convert the TPM-encoded signature into something useful for the caller. */
             r = ifapi_tpm_to_fapi_signature(sig_key_object,
                                             command->tpm_signature,
                                             signature, signatureSize);
             SAFE_FREE(command->tpm_signature);
             goto_if_error(r, "Create FAPI signature.", error_cleanup);
 
+            /* Compute the quote info; i.e. the data that was actually
+               signed by the TPM. */
             r = ifapi_compute_quote_info(sig_key_object,
                                          command->tpm_quoted,
                                          quoteInfo);
             goto_if_error(r, "Create compute quote info.", error_cleanup);
 
+            /* Return the key's certificate if requested. */
             if (certificate) {
                 strdup_check(*certificate, sig_key_object->misc.key.certificate, r, error_cleanup);
             }
+
+            /* If the pcrLog was not requested, the operation is done. */
             if (!pcrLog) {
                 context->state = PCR_QUOTE_CLEANUP;
                 return TSS2_FAPI_RC_TRY_AGAIN;
             }
 
+            /* Retrieve the eventlog for the PCRs for the quote. */
             r = ifapi_eventlog_get_async(&context->eventlog, &context->io,
                                          command->pcrList,
                                          command->pcrListSize);
             goto_if_error(r, "Error getting event log", error_cleanup);
 
-            context->state = PCR_QUOTE_READ_EVENT_LIST;
             fallthrough;
 
         statecase(context->state, PCR_QUOTE_READ_EVENT_LIST);
@@ -390,6 +426,7 @@ Fapi_Quote_Finish(
             fallthrough;
 
         statecase(context->state, PCR_QUOTE_CLEANUP)
+            /* Cleanup the session used for authorization. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
@@ -400,6 +437,7 @@ Fapi_Quote_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     SAFE_FREE(command->tpm_signature);
     SAFE_FREE(command->tpm_quoted);
     SAFE_FREE(command->keyPath);
@@ -409,6 +447,6 @@ error_cleanup:
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_cleanup_ifapi_object(command->key_object);
     ifapi_session_clean(context);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

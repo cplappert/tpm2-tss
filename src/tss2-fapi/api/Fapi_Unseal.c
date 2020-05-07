@@ -28,22 +28,32 @@
  *
  * Unseals data from a seal in the FAPI metadata store.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path to the sealed data
- * @param [out] data The decrypted data after unsealing. May be NULL
- * @param [out] size The size of data in bytes. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the sealed data
+ * @param[out] data The decrypted data after unsealing. May be NULL
+ * @param[out] size The size of data in bytes. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if path does not point to a sealed data object.
  * @retval TSS2_FAPI_RC_BAD_VALUE: if the digestSize is zero.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the FAPI storage cannot be accessed.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_SIGNATURE_VERIFICATION_FAILED if the signature could not
+ *         be verified
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Unseal(
@@ -94,7 +104,7 @@ Fapi_Unseal(
 
     return_if_error_reset_state(r, "Unseal");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -104,20 +114,21 @@ Fapi_Unseal(
  *
  * Call Fapi_Unseal_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path to the sealed data
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the sealed data
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if path does not point to a sealed data object.
  * @retval TSS2_FAPI_RC_BAD_VALUE: if the digestSize is zero.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the FAPI storage cannot be accessed.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_Unseal_Async(
@@ -136,14 +147,20 @@ Fapi_Unseal_Async(
     /* Helpful alias pointers */
     IFAPI_Unseal * command = &context->cmd.Unseal;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize Unseal");
 
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->keyPath, path, r, error_cleanup);
+
+    /* Initialize the context state for this operation. */
     context->state = UNSEAL_WAIT_FOR_KEY;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->keyPath);
     return r;
 }
@@ -152,9 +169,9 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_Unseal_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] data The decrypted data after unsealing. May be NULL
- * @param [out] size The size of data in bytes. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] data The decrypted data after unsealing. May be NULL
+ * @param[out] size The size of data in bytes. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -166,6 +183,15 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_SIGNATURE_VERIFICATION_FAILED if the signature could not
+ *         be verified
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Unseal_Finish(
@@ -186,25 +212,26 @@ Fapi_Unseal_Finish(
 
     switch (context->state) {
         statecase(context->state, UNSEAL_WAIT_FOR_KEY);
+            /* Load the key to be used for unsealing from the keystore. */
             r = ifapi_load_key(context, command->keyPath,
                                &command->object);
             return_try_again(r);
             goto_if_error(r, "Fapi load key.", error_cleanup);
 
-            context->state = UNSEAL_AUTHORIZE_OBJECT;
             fallthrough;
 
         statecase(context->state, UNSEAL_AUTHORIZE_OBJECT);
+            /* Authorize the session for use with with key. */
             r = ifapi_authorize_object(context, command->object, &auth_session);
             return_try_again(r);
             goto_if_error(r, "Authorize sealed object.", error_cleanup);
 
+            /* Perform the unseal operation with the TPM. */
             r = Esys_Unseal_Async(context->esys, command->object->handle,
                     auth_session,
                     ESYS_TR_NONE, ESYS_TR_NONE);
             goto_if_error(r, "Error esys Unseal ", error_cleanup);
 
-            context->state = UNSEAL_WAIT_FOR_UNSEAL;
             fallthrough;
 
         statecase(context->state, UNSEAL_WAIT_FOR_UNSEAL);
@@ -212,10 +239,10 @@ Fapi_Unseal_Finish(
             return_try_again(r);
             goto_if_error(r, "Unseal_Finish", error_cleanup);
 
+            /* Flush the used key from the TPM. */
             r = Esys_FlushContext_Async(context->esys, command->object->handle);
             goto_if_error(r, "Error Esys Flush ", error_cleanup);
 
-            context->state = UNSEAL_WAIT_FOR_FLUSH;
             fallthrough;
 
         statecase(context->state, UNSEAL_WAIT_FOR_FLUSH);
@@ -223,6 +250,8 @@ Fapi_Unseal_Finish(
             return_try_again(r);
             goto_if_error(r, "Unseal_Flush", error_cleanup);
 
+            /* Return the data as requested by the caller.
+               Duplicate the unseal_data as necessary. */
             if (size)
                 *size = command->unseal_data->size;
             if (data) {
@@ -237,6 +266,7 @@ Fapi_Unseal_Finish(
             fallthrough;
 
         statecase(context->state, UNSEAL_CLEANUP)
+            /* Cleanup the session used for authentication. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
@@ -247,12 +277,13 @@ Fapi_Unseal_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     ifapi_cleanup_ifapi_object(command->object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_session_clean(context);
     SAFE_FREE(command->keyPath);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

@@ -25,7 +25,7 @@
 #define SIGN_TEMPLATE  "sign,noDa"
 
 
-TSS2_RC
+static TSS2_RC
 auth_callback(
     FAPI_CONTEXT *context,
     char const *description,
@@ -39,22 +39,26 @@ auth_callback(
     return TSS2_RC_SUCCESS;
 }
 
-/** Test the FAPI functions for key creation and usage.
+/** Test the FAPI functions for TpmBlobs and certificates.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
+ *  - Fapi_SetAuthCB()
  *  - Fapi_CreateKey()
+ *  - Fapi_GetTpmBlobs()
  *  - Fapi_Sign()
- *  - Fapi_Delete()
- *  - Fapi_ChangeAuth()
+ *  - Fapi_VerifySignature()
  *  - Fapi_SetCertificate()
+ *  - Fapi_List()
+ *  - Fapi_ChangeAuth()
+ *  - Fapi_Delete()
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE
  * @retval EXIT_SUCCESS
  */
 int
-test_fapi_key_create(FAPI_CONTEXT *context)
+test_fapi_key_create_sign(FAPI_CONTEXT *context)
 {
     TSS2_RC r;
     char *sigscheme = NULL;
@@ -106,10 +110,12 @@ test_fapi_key_create(FAPI_CONTEXT *context)
     size_t signatureSize = 0;
 
     TPM2B_DIGEST digest = {
-        .size = 20,
+        .size = 32,
         .buffer = {
             0x67, 0x68, 0x03, 0x3e, 0x21, 0x64, 0x68, 0x24, 0x7b, 0xd0,
-            0x31, 0xa0, 0xa2, 0xd9, 0x87, 0x6d, 0x79, 0x81, 0x8f, 0x8f
+            0x31, 0xa0, 0xa2, 0xd9, 0x87, 0x6d, 0x79, 0x81, 0x8f, 0x8f,
+            0x31, 0xa0, 0xa2, 0xd9, 0x87, 0x6d, 0x79, 0x81, 0x8f, 0x8f,
+            0x67, 0x68
         }
     };
 
@@ -163,5 +169,5 @@ error:
 int
 test_invoke_fapi(FAPI_CONTEXT *fapi_context)
 {
-    return test_fapi_key_create(fapi_context);
+    return test_fapi_key_create_sign(fapi_context);
 }

@@ -28,16 +28,16 @@
  * Creates a sealed object and stores it in the FAPI metadata store. If no data
  * is provided, the TPM generates random data to fill the sealed object.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path to the new sealed object
- * @param [in] type The type of the new sealed object. May be NULL
- * @param [in] size The size of the new sealed object. Must not be 0
- * @param [in] policyPath The path to the policy that is associated with the new
- *             sealed object. May be NULL
- * @param [in] authValue The authorization value for the new sealed object. May
- *             be NULL
- * @param [in] data The data that is to be sealed within the new object. May be
- *             NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the new sealed object
+ * @param[in] type The type of the new sealed object. May be NULL
+ * @param[in] size The size of the new sealed object. Must not be 0
+ * @param[in] policyPath The path to the policy that is associated with the new
+ *            sealed object. May be NULL
+ * @param[in] authValue The authorization value for the new sealed object. May
+ *            be NULL
+ * @param[in] data The data that is to be sealed within the new object. May be
+ *            NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, or path is NULL.
@@ -49,12 +49,18 @@
  * @retval TSS2_FAPI_RC_PATH_ALREADY_EXISTS: if a sealed object already exists
  *         at path.
  * @retval TSS2_FAPI_RC_BAD_VALUE: if the keyType is invalid.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the FAPI storage cannot be updated.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_CreateSeal(
@@ -109,7 +115,7 @@ Fapi_CreateSeal(
 
     return_if_error_reset_state(r, "CreateSeal");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -120,16 +126,16 @@ Fapi_CreateSeal(
  *
  * Call Fapi_CreateSeal_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path to the new sealed object
- * @param [in] type The type of the new sealed object. May be NULL
- * @param [in] size The size of the new sealed object. Must not be 0
- * @param [in] policyPath The path to the policy that is associated with the new
- *             sealed object. May be NULL
- * @param [in] authValue The authorization value for the new sealed object. May
- *             be NULL
- * @param [in] data The data that is to be sealed within the new object. May be
- *             NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the new sealed object
+ * @param[in] type The type of the new sealed object. May be NULL
+ * @param[in] size The size of the new sealed object. Must not be 0
+ * @param[in] policyPath The path to the policy that is associated with the new
+ *            sealed object. May be NULL
+ * @param[in] authValue The authorization value for the new sealed object. May
+ *            be NULL
+ * @param[in] data The data that is to be sealed within the new object. May be
+ *            NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, or path is NULL.
@@ -141,12 +147,13 @@ Fapi_CreateSeal(
  * @retval TSS2_FAPI_RC_PATH_ALREADY_EXISTS: if a sealed object already exists
  *         at path.
  * @retval TSS2_FAPI_RC_BAD_VALUE: if the keyType is invalid.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the FAPI storage cannot be updated.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_CreateSeal_Async(
@@ -171,15 +178,18 @@ Fapi_CreateSeal_Async(
     check_not_null(context);
     check_not_null(path);
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize CreateSeal");
 
+    /* Copy parameters to context for use during _Finish. */
     memset(&context->cmd.Key_Create.public_templ, 0, sizeof(IFAPI_KEY_TEMPLATE));
-
     r = ifapi_key_create_prepare_sensitive(context, path, policyPath, size,
                                            authValue, data);
     return_if_error(r, "Key create.");
 
+    /* Set the flags of the NV index to be created. If no type is given the empty-string
+       default type flags are set. */
     r = ifapi_set_key_flags(type ? type : "",
                             (policyPath && strcmp(policyPath, "") != 0) ? true : false,
                             &context->cmd.Key_Create.public_templ);
@@ -188,9 +198,10 @@ Fapi_CreateSeal_Async(
     context->cmd.Key_Create.public_templ.public.publicArea.objectAttributes  &=
         ~TPMA_OBJECT_SENSITIVEDATAORIGIN;
 
+    /* Initialize the context state for this operation. */
     context->state = CREATE_SEAL;
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -198,7 +209,7 @@ Fapi_CreateSeal_Async(
  *
  * This function should be called after a previous Fapi_CreateSeal.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -210,6 +221,11 @@ Fapi_CreateSeal_Async(
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_CreateSeal_Finish(
@@ -224,6 +240,9 @@ Fapi_CreateSeal_Finish(
 
     switch (context->state) {
         statecase(context->state, CREATE_SEAL);
+            /* Create the seal object. A seal object internally is a so-called
+               KEYED_HASH object and created in the same way as a regular key.
+               Thus the function name ifapi_key_create(). */
             r = ifapi_key_create(context, &context->cmd.Key_Create.public_templ);
             return_try_again(r);
             goto_if_error(r, "Key create", error_cleanup);
@@ -233,10 +252,11 @@ Fapi_CreateSeal_Finish(
     }
 
 error_cleanup:
+   /* Cleanup any intermediate results and state stored in the context. */
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     context->state = _FAPI_STATE_INIT;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

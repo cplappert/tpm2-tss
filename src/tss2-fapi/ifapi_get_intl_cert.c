@@ -13,9 +13,11 @@
 #include <openssl/buffer.h>
 #include <openssl/evp.h>
 #include <openssl/sha.h>
-
+#include <json-c/json.h>
 
 #include "fapi_crypto.h"
+#include "ifapi_helpers.h"
+
 #define LOGMODULE fapi
 #include "util/log.h"
 #include "util/aux_util.h"
@@ -36,9 +38,15 @@ static tpm_getekcertificate_ctx ctx = {
     .is_tpm2_device_active = true,
 };
 
+/** Compute the SHA256 hash from the public key of an EK.
+ *
+ * @param[in]  ek_public The public information of the EK.
+ * @retval unsigned_char* The hash value.
+ * @retval NULL If the computation of the hash fails.
+ */
 static unsigned char *hash_ek_public(TPM2B_PUBLIC *ek_public) {
 
-    unsigned char *hash = (unsigned char*) malloc(SHA256_DIGEST_LENGTH);
+    unsigned char *hash = (unsigned char *)malloc(SHA256_DIGEST_LENGTH);
     if (!hash) {
         LOG_ERROR("OOM");
         return NULL;
@@ -53,19 +61,22 @@ static unsigned char *hash_ek_public(TPM2B_PUBLIC *ek_public) {
 
     switch (ek_public->publicArea.type) {
     case TPM2_ALG_RSA:
+        /* Add public key to the hash. */
         is_success = SHA256_Update(&sha256,
-                ek_public->publicArea.unique.rsa.buffer,
-                ek_public->publicArea.unique.rsa.size);
+                                   ek_public->publicArea.unique.rsa.buffer,
+                                   ek_public->publicArea.unique.rsa.size);
         if (!is_success) {
             LOG_ERROR("SHA256_Update failed");
             goto err;
         }
 
+        /* Add exponent to the hash. */
         if (ek_public->publicArea.parameters.rsaDetail.exponent != 0) {
             LOG_ERROR("non-default exponents unsupported");
             goto err;
         }
-        BYTE buf[3] = { 0x1, 0x00, 0x01 }; // Exponent
+        /* Exponent 65537 will be added. */
+        BYTE buf[3] = { 0x1, 0x00, 0x01 };
         is_success = SHA256_Update(&sha256, buf, sizeof(buf));
         if (!is_success) {
             LOG_ERROR("SHA256_Update failed");
@@ -75,16 +86,17 @@ static unsigned char *hash_ek_public(TPM2B_PUBLIC *ek_public) {
 
     case TPM2_ALG_ECC:
         is_success = SHA256_Update(&sha256,
-                ek_public->publicArea.unique.ecc.x.buffer,
-                ek_public->publicArea.unique.ecc.x.size);
+                                   ek_public->publicArea.unique.ecc.x.buffer,
+                                   ek_public->publicArea.unique.ecc.x.size);
         if (!is_success) {
             LOG_ERROR("SHA256_Update failed");
             goto err;
         }
 
+        /* Add public key to the hash. */
         is_success = SHA256_Update(&sha256,
-                ek_public->publicArea.unique.ecc.y.buffer,
-                ek_public->publicArea.unique.ecc.y.size);
+                                   ek_public->publicArea.unique.ecc.y.buffer,
+                                   ek_public->publicArea.unique.ecc.y.size);
         if (!is_success) {
             LOG_ERROR("SHA256_Update failed");
             goto err;
@@ -111,7 +123,14 @@ err:
     return NULL;
 }
 
-char *base64_encode(const unsigned char* buffer)
+/** Calculate the base64 encoding of the hash of the Endorsement Public Key.
+ *
+ * @param[in] buffer The hash of the endorsement public key.
+ * @retval char* The base64 encoded string.
+ * @retval NULL if the encoding fails.
+ */
+static char *
+base64_encode(const unsigned char* buffer)
 {
     BIO *bio, *b64;
     BUF_MEM *buffer_pointer;
@@ -164,36 +183,90 @@ char *base64_encode(const unsigned char* buffer)
     return final_string;
 }
 
-struct CertificateBuffer {
-  unsigned char *buffer;
-  size_t size;
-};
-
-static size_t
-get_certificate_buffer_cb(void *contents, size_t size, size_t nmemb, void *userp)
+/** Decode a base64 encoded certificate into binary form.
+ *
+ * @param[in]  buffer The base64 encoded certificate.
+ * @param[in]  len The length of the encoded certificate.
+ * @param[out] new_len The lenght of the binary certificate.
+ * @retval char* The binary data of the certificate.
+ * @retval NULL if the decoding fails.
+ */
+static char *
+base64_decode(unsigned char* buffer, size_t len, size_t *new_len)
 {
-  size_t realsize = size * nmemb;
-  struct CertificateBuffer *cert = (struct CertificateBuffer *)userp;
+    size_t i, unescape_len, r;
+    char *binary_data = NULL, *unescaped_string = NULL;
 
-  unsigned char *tmp_ptr = realloc(cert->buffer, cert->size + realsize + 1);
-  if(tmp_ptr == NULL) {
-      LOG_ERROR("Can't allocate memory in CURL callback.");
-    return 0;
-  }
-  cert->buffer = tmp_ptr;
-  memcpy(&(cert->buffer[cert->size]), contents, realsize);
-  cert->size += realsize;
-  cert->buffer[cert->size] = 0;
+    LOG_INFO("Decoding the base64 encoded cert into binary form");
 
-  return realsize;
+    if (buffer == NULL) {
+        LOG_ERROR("Cert buffer is null");
+        return NULL;
+    }
+
+    for (i = 0; i < len; i++) {
+        if (buffer[i] == '-') {
+            buffer[i] = '+';
+        }
+        if (buffer[i] == '_') {
+            buffer[i] = '/';
+        }
+    }
+
+    CURL *curl = curl_easy_init();
+    if (curl) {
+        /* Convert URL encoded string to a "plain string" */
+        char *output = curl_easy_unescape(curl, (char *)buffer,
+                                          len, (int *)&unescape_len);
+        if (output) {
+            unescaped_string = strdup(output);
+            curl_free(output);
+        }
+    }
+    curl_easy_cleanup(curl);
+    curl_global_cleanup();
+    if (unescaped_string == NULL)
+        return NULL;
+
+    binary_data = calloc(1, unescape_len);
+    if (binary_data == NULL) {
+        free (unescaped_string);
+        return NULL;
+    }
+
+    BIO *bio, *b64;
+    bio = BIO_new_mem_buf(unescaped_string, -1);
+    b64 = BIO_new(BIO_f_base64());
+    bio = BIO_push(b64, bio);
+    BIO_set_flags(bio, BIO_FLAGS_BASE64_NO_NL);
+
+    if ((r = BIO_read(bio, binary_data, unescape_len)) <= 0) {
+        LOG_ERROR("BIO_read base64 encoded cert failed");
+        free(binary_data);
+        binary_data = NULL;
+    }
+    *new_len = r;
+
+    free (unescaped_string);
+    BIO_free_all(bio);
+    return binary_data;
 }
 
+/** Get endorsement certificate from the WEB.
+ *
+ * The base64 encoded public endorsement key will be added to the INTEL
+ * server address and used as URL to retrieve the certificate.
+ * The certificate will be retrieved via curl.
+ *
+ * @param[in]  b64h The base64 encoded public key.
+ * @param[out] buffer The json encoded certificate.
+ * @param[out] cert_size The size of the certificate.
+ */
 int retrieve_endorsement_certificate(char *b64h, unsigned char ** buffer,
                                      size_t *cert_size) {
     int ret = -1;
 
     size_t len = 1 + strlen(b64h) + strlen(ctx.ek_server_addr);
-    struct CertificateBuffer cert_buffer = { .size = 0, .buffer = NULL };
     char *weblink = (char *) malloc(len);
 
     if (!weblink) {
@@ -203,104 +276,97 @@ int retrieve_endorsement_certificate(char *b64h, unsigned char ** buffer,
 
     snprintf(weblink, len, "%s%s", ctx.ek_server_addr, b64h);
 
-    CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
-    if (rc != CURLE_OK) {
-        LOG_ERROR("curl_global_init failed: %s", curl_easy_strerror(rc));
-        goto out_memory;
-    }
-
-    CURL *curl = curl_easy_init();
-    if (!curl) {
-        LOG_ERROR("curl_easy_init failed");
-        goto out_global_cleanup;
-    }
-
-    /*
-     * should not be used - Used only on platforms with older CA certificates.
-     */
-    if (ctx.SSL_NO_VERIFY) {
-        rc = curl_easy_setopt(curl, CURLOPT_SSL_VERIFYPEER, 0);
-        if (rc != CURLE_OK) {
-            LOG_ERROR("curl_easy_setopt for CURLOPT_SSL_VERIFYPEER failed: %s",
-                    curl_easy_strerror(rc));
-            goto out_easy_cleanup;
-        }
-    }
-
-    rc = curl_easy_setopt(curl, CURLOPT_URL, weblink);
-    if (rc != CURLE_OK) {
-        LOG_ERROR("curl_easy_setopt for CURLOPT_URL failed: %s",
-                curl_easy_strerror(rc));
-        goto out_easy_cleanup;
-    }
-
-    rc =  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
-                           get_certificate_buffer_cb);
-    if (rc != CURLE_OK) {
-        LOG_ERROR("curl_easy_setopt for CURLOPT_URL failed: %s",
-                curl_easy_strerror(rc));
-        goto out_easy_cleanup;
-    }
-
-    rc =  curl_easy_setopt(curl, CURLOPT_WRITEDATA,
-                          (void *)&cert_buffer);
-    if (rc != CURLE_OK) {
-        LOG_ERROR("curl_easy_setopt for CURLOPT_URL failed: %s",
-                curl_easy_strerror(rc));
-        goto out_easy_cleanup;
-    }
-
-    rc = curl_easy_perform(curl);
-    if (rc != CURLE_OK) {
-        LOG_ERROR("curl_easy_perform() failed: %s", curl_easy_strerror(rc));
-        goto out_easy_cleanup;
-    }
-
-    *buffer = cert_buffer.buffer;
-    *cert_size = cert_buffer.size;
-
-    ret = 0;
-
-out_easy_cleanup:
-    if (ret != 0)
-        free(cert_buffer.buffer);
-    curl_easy_cleanup(curl);
-out_global_cleanup:
-    curl_global_cleanup();
-out_memory:
+    CURLcode rc =  ifapi_get_curl_buffer((unsigned char *)weblink,
+                                         buffer, cert_size);
     free(weblink);
-
-    return ret;
+    return rc;
 }
 
-/**
- * Get INTEL certificate for EK
+/** Get INTEL certificate for EK
  *
+ * Using the base64 encoded public endorsement key the JSON encoded certificate
+ * will be downloaded.
+ * The JSON certificate will be parsed and the base64 encoded certificate
+ * will be converted into binary format.
+ *
+ *
+ * @param[in] context The FAPI context with the configuration data.
  * @param[in] ek_public The out public data of the EK.
  * @param[out] cert_buffer the der encoded certificate.
  * @param[out] cert_size The size of the certificate buffer.
  *
- * @retval TSS2_RC_SUCCESS on succes.
+ * @retval TSS2_RC_SUCCESS on success.
  * @retval TSS2_FAPI_RC_NO_CERT If an error did occur during certificate downloading.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occured.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
-ifapi_get_intl_ek_certificate(TPM2B_PUBLIC *ek_public, unsigned char ** cert_buffer,
-                            size_t *cert_size)
+ifapi_get_intl_ek_certificate(FAPI_CONTEXT *context, TPM2B_PUBLIC *ek_public,
+                              unsigned char ** cert_buffer, size_t *cert_size)
 {
     int rc = 1;
     unsigned char *hash = hash_ek_public(ek_public);
+    char *cert_ptr;
+    char *cert_start = NULL, *cert_bin = NULL;
     char *b64 = base64_encode(hash);
+
     if (!b64) {
         LOG_ERROR("base64_encode returned null");
         goto out;
     }
-    // TODO check whether appropriate or store addess in profile and use value from profile
-    ctx.ek_server_addr = "https://ekop.intel.com/ekcertservice/";
+    if (context->config.intel_cert_service)
+        ctx.ek_server_addr = context->config.intel_cert_service;
+    else
+        ctx.ek_server_addr = "https://ekop.intel.com/ekcertservice/";
 
     LOG_INFO("%s", b64);
 
+    /* Download the JSON encoded certificate. */
     rc = retrieve_endorsement_certificate(b64, cert_buffer, cert_size);
     free(b64);
+    goto_if_error(rc, "Retrieve endorsement certificate", out);
+    cert_ptr = (char *)*cert_buffer;
+    LOGBLOB_DEBUG((uint8_t *)cert_ptr, *cert_size, "%s", "Certificate");
+
+    /* Parse certificate data out of the json structure */
+    struct json_object *jso_cert, *jso = json_tokener_parse(cert_ptr);
+    if (jso == NULL)
+        goto_error(rc, TSS2_FAPI_RC_GENERAL_FAILURE,
+                   "Failed to parse EK cert data", out_free_json);
+
+    if (!json_object_object_get_ex(jso, "certificate", &jso_cert))
+        goto_error(rc, TSS2_FAPI_RC_GENERAL_FAILURE,
+                   "Could not find cert object", out_free_json);
+
+    if (!json_object_is_type(jso_cert, json_type_string))
+        goto_error(rc, TSS2_FAPI_RC_GENERAL_FAILURE,
+                   "Invalid EK cert data", out_free_json);
+
+    cert_start = strdup(json_object_get_string(jso_cert));
+    if (!cert_start) {
+        SAFE_FREE(cert_ptr);
+        goto_error(rc, TSS2_FAPI_RC_MEMORY,
+                   "Failed to duplicate cert", out_free_json);
+    }
+
+    *cert_size = strlen(cert_start);
+
+    /* Base64 decode buffer into binary PEM format */
+    cert_bin = base64_decode((unsigned char *)cert_start,
+                             *cert_size, cert_size);
+    SAFE_FREE(cert_ptr);
+    SAFE_FREE(cert_start);
+
+    if (cert_bin == NULL) {
+        goto_error(rc, TSS2_FAPI_RC_GENERAL_FAILURE,
+                   "Invalid EK cert data", out_free_json);
+    }
+    LOG_DEBUG("Binary cert size %zu", *cert_size);
+    *cert_buffer = (unsigned char *)cert_bin;
+
+out_free_json:
+    json_object_put(jso);
+
 out:
     /* In some case this call was necessary after curl usage */
     OpenSSL_add_all_algorithms();

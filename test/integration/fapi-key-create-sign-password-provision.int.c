@@ -24,8 +24,7 @@
 #define PASSWORD "abc"
 #define SIGN_TEMPLATE "sign,noDa"
 
-
-TSS2_RC
+static TSS2_RC
 auth_callback(
     FAPI_CONTEXT *context,
     char const *description,
@@ -42,15 +41,18 @@ auth_callback(
     return TSS2_RC_SUCCESS;
 }
 
-/** Test the FAPI functions for key creation and usage with a SH password.
+/** Test the FAPI functions for key creation and usage with an SH password.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
+ *  - Fapi_SetAuthCB()
  *  - Fapi_CreateKey()
+ *  - Fapi_GetTpmBlobs()
  *  - Fapi_Sign()
- *  - Fapi_Delete()
- *  - Fapi_ChangeAuth()
  *  - Fapi_SetCertificate()
+ *  - Fapi_List()
+ *  - Fapi_ChangeAuth()
+ *  - Fapi_Delete()
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE

@@ -29,9 +29,9 @@
         if (r == TSS2_RC_SUCCESS) { poll(ph, nph, -1); Fapi_Free(ph); }
  *      r = Fapi_*_Finish(fc, ...); } while (r == TSS2_FAPI_RC_TRY_AGAIN);
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] handles An array of poll handle entries
- * @param [out] num_handles The size of the array in handles
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] handles An array of poll handle entries
+ * @param[out] num_handles The size of the array in handles
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or data is NULL.
@@ -57,6 +57,7 @@ Fapi_GetPollHandles(
     check_not_null(handles);
     check_not_null(num_handles);
 
+    /* Check the correct state for poll handle retrieval. */
     if (context->state == _FAPI_STATE_INIT) {
         LOG_ERROR("PollHandles can only be returned while an operation is running");
         return TSS2_FAPI_RC_BAD_SEQUENCE;
@@ -76,6 +77,7 @@ Fapi_GetPollHandles(
     return_if_null(context->esys, "No non-TPM based poll handles found.",
                    TSS2_FAPI_RC_NO_HANDLE);
 
+    /* Retrieve the actual poll handles from ESYS. */
     r = Esys_GetPollHandles(context->esys, handles, num_handles);
     if (r) {
         LOG_DEBUG("Returning TSS2_FAPI_RC_NO_HANDLE");

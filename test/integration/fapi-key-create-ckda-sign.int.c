@@ -21,7 +21,7 @@
 
 #define PASSWORD "abc"
 
-TSS2_RC
+static TSS2_RC
 auth_callback(
     FAPI_CONTEXT *context,
     char const *description,
@@ -44,21 +44,21 @@ auth_callback(
 #define SIGN_TEMPLATE  "sign, noDa"
 #endif
 
-/** Test the FAPI functions for key creation and usage.
+/** Test the FAPI functions for key creation and usage with noda and da flag.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
  *  - Fapi_CreateKey()
+ *  - Fapi_SetAuthCB()
  *  - Fapi_Sign()
  *  - Fapi_Delete()
- *  - Fapi_List()
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE
  * @retval EXIT_SUCCESS
  */
 int
-test_fapi_key_create_ecc(FAPI_CONTEXT *context)
+test_fapi_key_create_ckda_sign(FAPI_CONTEXT *context)
 {
     TSS2_RC r;
 
@@ -108,5 +108,5 @@ error:
 int
 test_invoke_fapi(FAPI_CONTEXT *fapi_context)
 {
-    return test_fapi_key_create_ecc(fapi_context);
+    return test_fapi_key_create_ckda_sign(fapi_context);
 }

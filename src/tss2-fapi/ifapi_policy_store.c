@@ -21,6 +21,7 @@
 #include "ifapi_policy_json_serialize.h"
 
 /** Compute absolute path of policy for IO.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 static TSS2_RC
 policy_rel_path_to_abs_path(
@@ -43,8 +44,8 @@ policy_rel_path_to_abs_path(
 }
 /** Remove file storing a policy object.
  *
- * @parm[in] pstore The policy directory.
- * @parm[in] path The relative name of the object be removed.
+ * @param[in] pstore The policy directory.
+ * @param[in] path The relative name of the object be removed.
  * @retval TSS2_RC_SUCCESS On success.
  * @retval TSS2_FAPI_RC_MEMORY: If memory could not be allocated.
  * @retval TSS2_FAPI_RC_PATH_NOT_FOUND If no file is found in policy store.
@@ -52,13 +53,13 @@ policy_rel_path_to_abs_path(
  */
 TSS2_RC
 ifapi_policy_delete(
-     IFAPI_POLICY_STORE *pstore,
-     char *path)
+    IFAPI_POLICY_STORE * pstore,
+    char *path)
 {
     TSS2_RC r;
     char *abs_path = NULL;
 
-    /* Convert relative path to abolute path in policy store */
+    /* Convert relative path to absolute path in policy store */
     r = policy_rel_path_to_abs_path(pstore, path, &abs_path);
     goto_if_error2(r, "Path %s could not be created.", cleanup, path);
 
@@ -71,22 +72,23 @@ ifapi_policy_delete(
         LOG_WARNING("File: %s can't be deleted.", abs_path);
     }
 
- cleanup:
-     SAFE_FREE(abs_path);
-     return r;
+cleanup:
+    SAFE_FREE(abs_path);
+    return r;
 }
 
 /** Store policy store parameters in the policy store context.
  *
  * Also the user directory will be created if it does not exist.
  *
- * @parm[out] policy store The keystore to be initialized.
- * @parm[in] config_policydir The configured policy directory.
- * @parm[in] config_userdir The configured user directory.
+ * @param[out] pstore The keystore to be initialized.
+ * @param[in] config_policydir The configured policy directory.
  * @retval TSS2_RC_SUCCESS If the keystore can be initialized.
  * @retval TSS2_FAPI_RC_IO_ERROR If the policy store can't be
  *         initialized.
  * @retval TSS2_FAPI_RC_MEMORY: if memory could not be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_policy_store_initialize(
@@ -109,7 +111,7 @@ ifapi_policy_store_initialize(
     SAFE_FREE(policy_dir);
     return TSS2_RC_SUCCESS;
 
- error:
+error:
     SAFE_FREE(policy_dir);
     return r;
 }
@@ -118,9 +120,9 @@ ifapi_policy_store_initialize(
  *
  * Keys objects, NV objects, and hierarchies can be loaded.
  *
- * @parm[in] keystore The key directories and default profile.
- * @parm[in] io  The input/output context being used for file I/O.
- * @parm[in] path The relative path of the object. For keys the path will
+ * @param[in] pstore The policy directory.
+ * @param[in] io  The input/output context being used for file I/O.
+ * @param[in] path The relative path of the object. For keys the path will
  *           expanded if possible.
  * @retval TSS2_RC_SUCCESS If the object can be read.
  * @retval TSS2_FAPI_RC_IO_ERROR: if an I/O error was encountered.
@@ -141,16 +143,16 @@ ifapi_policy_store_load_async(
     /* Free old input buffer if buffer exists */
     SAFE_FREE(io->char_rbuffer);
 
-    /* Convert relative path to abolute path in keystore */
+    /* Convert relative path to absolute path in keystore */
     r = policy_rel_path_to_abs_path(pstore, path, &abs_path);
     goto_if_error2(r, "Object %s not found.", cleanup, path);
 
     /* Prepare read operation */
     r = ifapi_io_read_async(io, abs_path);
 
- cleanup:
-     SAFE_FREE(abs_path);
-     return r;
+cleanup:
+    SAFE_FREE(abs_path);
+    return r;
 }
 
 /** Finish loading FAPI policy from policy store.
@@ -158,22 +160,27 @@ ifapi_policy_store_load_async(
  *
  * This function needs to be called repeatedly until it does not return TSS2_FAPI_RC_TRY_AGAIN.
  *
- * @parm[in] pstore The policy context with the policy directory.
- * @param [in, out] io The input/output context being used for file I/O.
- * @parm[in] policy The caller allocated policy which will loaded from policy store.
+ * @param[in] pstore The policy context with the policy directory.
+ * @param[in,out] io The input/output context being used for file I/O.
+ * @param[in] policy The caller allocated policy which will loaded from policy store.
  * @retval TSS2_RC_SUCCESS After successfully loading the object.
  * @retval TSS2_FAPI_RC_IO_ERROR: if an I/O error was encountered; such as the file was not found.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet complete.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_policy_store_load_finish(
     IFAPI_POLICY_STORE *pstore,
     IFAPI_IO *io,
-    TPMS_POLICY_HARNESS *policy)
+    TPMS_POLICY *policy)
 {
     TSS2_RC r;
     json_object *jso = NULL;
-    uint8_t  *buffer = NULL;
+    uint8_t *buffer = NULL;
     /* ptore parameter is used to be prepared if transmission of state information
        between async and finish will be necessary in future extensions. */
     (void)pstore;
@@ -187,7 +194,7 @@ ifapi_policy_store_load_finish(
     SAFE_FREE(buffer);
     return_if_null(jso, "Policy store is corrupted (Json error).", TSS2_FAPI_RC_GENERAL_FAILURE);
 
-    r = ifapi_json_TPMS_POLICY_HARNESS_deserialize(jso, policy);
+    r = ifapi_json_TPMS_POLICY_deserialize(jso, policy);
     goto_if_error(r, "Deserialize policy", cleanup);
 
 cleanup:
@@ -204,20 +211,23 @@ cleanup:
  * The relative path will be expanded, if the default policy directory (/policy)
  * is not part of the path.
  *
- * @parm[in] pstore The policy context with the policy directory.
- * @parm[in] io  The input/output context being used for file I/O.
- * @parm[in] path The relative path of the policy.
- * @parm[in] policy The policy to be written to the policy store.
+ * @param[in] pstore The policy context with the policy directory.
+ * @param[in] io  The input/output context being used for file I/O.
+ * @param[in] path The relative path of the policy.
+ * @param[in] policy The policy to be written to the policy store.
  * @retval TSS2_RC_SUCCESS If the policy is written successfully.
  * @retval TSS2_FAPI_RC_IO_ERROR: If an I/O error was encountered;
  * @retval TSS2_FAPI_RC_MEMORY: If memory could not be allocated to hold the output data.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_policy_store_store_async(
     IFAPI_POLICY_STORE *pstore,
     IFAPI_IO *io,
     const char *path,
-    const TPMS_POLICY_HARNESS *policy)
+    const TPMS_POLICY *policy)
 {
     TSS2_RC r;
     char *jso_string = NULL;
@@ -226,12 +236,12 @@ ifapi_policy_store_store_async(
 
     LOG_TRACE("Store policy: %s", path);
 
-    /* Convert relative path to abolute path in the policy store */
+    /* Convert relative path to absolute path in the policy store */
     r = policy_rel_path_to_abs_path(pstore, path, &abs_path);
     goto_if_error2(r, "Path %s could not be created.", cleanup, path);
 
     /* Generate JSON string to be written to store */
-    r = ifapi_json_TPMS_POLICY_HARNESS_serialize(policy, &jso);
+    r = ifapi_json_TPMS_POLICY_serialize(policy, &jso);
     goto_if_error2(r, "Policy %s could not be serialized.", cleanup, path);
 
     jso_string = strdup(json_object_to_json_string_ext(jso,
@@ -244,7 +254,7 @@ ifapi_policy_store_store_async(
     free(jso_string);
     goto_if_error(r, "write_async failed", cleanup);
 
- cleanup:
+cleanup:
     if (jso)
         json_object_put(jso);
     SAFE_FREE(abs_path);
@@ -255,7 +265,8 @@ ifapi_policy_store_store_async(
  *
  * This function needs to be called repeatedly until it does not return TSS2_FAPI_RC_TRY_AGAIN.
  *
- * @param [in, out] io The input/output context being used for file I/O.
+ * @param[in] pstore The policy context with the policy directory.
+ * @param[in,out] io The input/output context being used for file I/O.
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_IO_ERROR: if an I/O error was encountered; such as the file was not found.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet complete.
@@ -268,7 +279,7 @@ ifapi_policy_store_store_finish(
 {
     TSS2_RC r;
 
-    /* Pstore parameter is used to be prepared if transmission of state infomation
+    /* Pstore parameter is used to be prepared if transmission of state information
        between async and finish will be necessary in future extensions. */
     (void)pstore;
     /* Finish writing the policy */

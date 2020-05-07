@@ -170,7 +170,11 @@ daemon_stop ()
     return ${ret}
 }
 
-sanity_test
+OS=$(uname)
+
+if [ "$OS" == "Linux" ]; then
+    sanity_test
+fi
 
 # Once option processing is done, $@ should be the name of the test executable
 # followed by all of the options passed to the test executable.
@@ -181,12 +185,21 @@ TEST_NAME=$(basename "${TEST_BIN}")
 # start an instance of the simulator for the test, have it use a random port
 SIM_LOG_FILE=${TEST_BIN}_simulator.log
 SIM_PID_FILE=${TEST_BIN}_simulator.pid
-SIM_TMP_DIR=$(mktemp --directory --tmpdir=/tmp tpm_server_XXXXXX)
+SIM_TMP_DIR=$(mktemp -d /tmp/tpm_server_XXXXXX)
 PORT_MIN=1024
 PORT_MAX=65534
 BACKOFF_FACTOR=2
 BACKOFF_MAX=6
 BACKOFF=1
+
+sock_tool="unknown"
+
+if [ "$OS" == "Linux" ]; then
+    sock_tool="ss -lntp4"
+elif [ "$OS" == "FreeBSD" ]; then
+    sock_tool="sockstat -l4"
+fi
+
 for i in $(seq ${BACKOFF_MAX}); do
     SIM_PORT_DATA=$(od -A n -N 2 -t u2 /dev/urandom | awk -v min=${PORT_MIN} -v max=${PORT_MAX} '{print ($1 % (max - min)) + min}')
     if [ $(expr ${SIM_PORT_DATA} % 2) -eq 1 ]; then
@@ -202,9 +215,9 @@ for i in $(seq ${BACKOFF_MAX}); do
     fi
     PID=$(cat ${SIM_PID_FILE})
     echo "simulator PID: ${PID}";
-    ss -lt4pn 2> /dev/null | grep "${PID}" | grep -q "${SIM_PORT_DATA}"
+    ${sock_tool} 2> /dev/null | grep "${PID}" | grep "${SIM_PORT_DATA}"
     ret_data=$?
-    ss -lt4pn 2> /dev/null | grep "${PID}" | grep -q "${SIM_PORT_CMD}"
+    ${sock_tool} 2> /dev/null | grep "${PID}" | grep "${SIM_PORT_CMD}"
     ret_cmd=$?
     if [ \( $ret_data -eq 0 \) -a \( $ret_cmd -eq 0 \) ]; then
         echo "Simulator with PID ${PID} bound to port ${SIM_PORT_DATA} and " \
@@ -238,8 +251,8 @@ fi
 
 EKPUB_FILE=${TEST_BIN}_ekpub.pem
 EKCERT_FILE=${TEST_BIN}_ekcert.crt
-INTERMEDCA_FILE=${TEST_BIN}_intermed-ca.pem
-ROOTCA_FILE=${TEST_BIN}_root-ca.pem
+EKCERT_PEM_FILE=${TEST_BIN}_ekcert.pem
+
 
 env TPM20TEST_TCTI_NAME="socket" \
     TPM20TEST_SOCKET_ADDRESS="127.0.0.1" \
@@ -254,8 +267,7 @@ fi
 
 EKECCPUB_FILE=${TEST_BIN}_ekeccpub.pem
 EKECCCERT_FILE=${TEST_BIN}_ekecccert.crt
-INTERMEDCA_FILE=${TEST_BIN}_intermedecc-ca.pem
-ROOTCA_FILE=${TEST_BIN}_root-ca.pem
+EKECCCERT_PEM_FILE=${TEST_BIN}_ekecccert.pem
 
 env TPM20TEST_TCTI_NAME="socket" \
     TPM20TEST_SOCKET_ADDRESS="127.0.0.1" \
@@ -268,17 +280,31 @@ if [ $? -ne 0 ]; then
     break
 fi
 
-SCRIPTDIR="$(dirname $(realpath $0))/"
-${SCRIPTDIR}/ekca/create_ca.sh "${EKPUB_FILE}" "${EKECCPUB_FILE}" "${EKCERT_FILE}" \
+INTERMEDCA_FILE=${TEST_BIN}_intermedecc-ca
+ROOTCA_FILE=${TEST_BIN}_root-ca
+
+if [ "$OS" == "Linux" ]; then
+    SCRIPTDIR="$(dirname $(realpath $0))/"
+    ${SCRIPTDIR}/ekca/create_ca.sh "${EKPUB_FILE}" "${EKECCPUB_FILE}" "${EKCERT_FILE}" \
                                "${EKECCCERT_FILE}" "${INTERMEDCA_FILE}" "${ROOTCA_FILE}" >${TEST_BIN}_ca.log 2>&1
-if [ $? -ne 0 ]; then
-    echo "ek-cert ca failed"
-    ret=99
-    break
+    if [ $? -ne 0 ]; then
+        echo "ek-cert ca failed"
+        ret=99
+        break
+    fi
 fi
 
-#hd $EKCERT_FILE
-#openssl x509 -in $EKCERT_FILE -inform DER -text -noout
+# Determine the fingerprint of the RSA EK public.
+FINGERPRINT=$(openssl pkey -pubin -inform PEM -in $EKPUB_FILE -outform DER | sha256sum  | cut -f 1 -d ' ')
+export FAPI_TEST_FINGERPRINT="  { \"hashAlg\" : \"sha256\", \"digest\" : \"$FINGERPRINT\" }"
+openssl x509 -inform DER -in $EKCERT_FILE -outform PEM -out $EKCERT_PEM_FILE
+export FAPI_TEST_CERTIFICATE="file:${EKCERT_PEM_FILE}"
+
+# Determine the fingerprint of the RSA EK public.
+FINGERPRINT_ECC=$(openssl pkey -pubin -inform PEM -in $EKECCPUB_FILE -outform DER | sha256sum  | cut -f 1 -d ' ')
+export FAPI_TEST_FINGERPRINT_ECC="  { \"hashAlg\" : \"sha256\", \"digest\" : \"$FINGERPRINT_ECC\" }"
+openssl x509 -inform DER -in $EKECCCERT_FILE -outform PEM -out $EKECCCERT_PEM_FILE
+export FAPI_TEST_CERTIFICATE_ECC="file:${EKECCCERT_PEM_FILE}"
 
 cat $EKCERT_FILE | \
 env TPM20TEST_TCTI_NAME="socket" \
@@ -333,8 +359,7 @@ env TPM20TEST_TCTI_NAME="socket" \
     TPM20TEST_SOCKET_ADDRESS="127.0.0.1" \
     TPM20TEST_SOCKET_PORT="${SIM_PORT_DATA}" \
     TPM20TEST_TCTI="mssim:host=127.0.0.1,port=${SIM_PORT_DATA}" \
-    INTERMEDCA=$INTERMEDCA_FILE \
-    ROOTCA=$ROOTCA_FILE \
+    FAPI_TEST_ROOT_CERT=${ROOTCA_FILE}.pem \
     G_MESSAGES_DEBUG=all $@
 ret=$?
 echo "Script returned $ret"

@@ -27,12 +27,12 @@
  * The FAPI will automatically do the multiple reads if the NV index is larger
  * than the TPM's TPM2_MAX_NV_BUFFER_SIZE.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path of the NV index to read
- * @param [out] data The data that was read from the NV index
- * @param [out] size The size of data in bytes. May be NULL
- * @param [out] logData The log data of the NV index if the index is of type
- * 							"extend". May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path of the NV index to read
+ * @param[out] data The data that was read from the NV index
+ * @param[out] size The size of data in bytes. May be NULL
+ * @param[out] logData The log data of the NV index if the index is of type
+ *             "extend". May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, nvPath or data is NULL.
@@ -46,6 +46,19 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvRead(
@@ -98,7 +111,7 @@ Fapi_NvRead(
 
     return_if_error_reset_state(r, "NV_Read");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -110,8 +123,8 @@ Fapi_NvRead(
  *
  * Call Fapi_NvRead_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path of the NV index to read
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path of the NV index to read
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or nvPath is NULL. *
@@ -125,6 +138,13 @@ Fapi_NvRead(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 Fapi_NvRead_Async(
@@ -143,19 +163,26 @@ Fapi_NvRead_Async(
     /* Helpful alias pointers */
     IFAPI_NV_Cmds * command = &context->nv_cmd;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize NvRead");
 
     memset(command, 0, sizeof(IFAPI_NV_Cmds));
+
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->nvPath, nvPath, r, error_cleanup);
 
+    /* Load the NV index metadata from keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, command->nvPath);
     goto_if_error_reset_state(r, "Could not open: %s", error_cleanup, command->nvPath);
 
+    /* Initialize the context state for this operation. */
     context->state = NV_READ_READ;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->nvPath);
     return r;
 }
@@ -164,11 +191,11 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_NvRead_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] data The data that was read from the NV index
- * @param [out] size The size of data in bytes. May be NULL
- * @param [out] logData The log data of the NV index if the index is of type
- * 							"extend". May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] data The data that was read from the NV index
+ * @param[out] size The size of data in bytes. May be NULL
+ * @param[out] logData The log data of the NV index if the index is of type
+ *			   "extend". May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or data is NULL.
@@ -180,6 +207,19 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvRead_Finish(
@@ -199,7 +239,7 @@ Fapi_NvRead_Finish(
     check_not_null(data);
 
     /* Helpful alias pointers */
-    IFAPI_NV_Cmds * command = &context->nv_cmd;
+    IFAPI_NV_Cmds *command = &context->nv_cmd;
     IFAPI_OBJECT *object = &command->nv_object;
     IFAPI_OBJECT *authObject = &command->auth_object;
 
@@ -213,6 +253,7 @@ Fapi_NvRead_Finish(
             goto_error(r, TSS2_FAPI_RC_BAD_PATH, "%s is no NV object.", error_cleanup,
                        command->nvPath);
 
+        /* Initialize the NV index object for use with ESYS. */
         r = ifapi_initialize_object(context->esys, object);
         goto_if_error_reset_state(r, "Initialize NV object", error_cleanup);
 
@@ -239,28 +280,27 @@ Fapi_NvRead_Finish(
         command->auth_index = authIndex;
         context->primary_state = PRIMARY_INIT;
 
-        /* Prepare Session */
+        /* Prepare session for authorization and data encryption. */
         r = ifapi_get_sessions_async(context,
                                      IFAPI_SESSION_GENEK | IFAPI_SESSION1,
                                      TPMA_SESSION_ENCRYPT, 0);
         goto_if_error_reset_state(r, "Create sessions", error_cleanup);
 
-        context->state = NV_READ_WAIT_FOR_SESSION;
-        return TSS2_FAPI_RC_TRY_AGAIN;
+        fallthrough;
 
     statecase(context->state, NV_READ_WAIT_FOR_SESSION)
-//TODO: Pass the namealg of the NV index into the session to be created
-        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile);
+        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile,
+                                      object->misc.nv.public.nvPublic.nameAlg);
         return_try_again(r);
         goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
 
         command->nv_read_state = NV_READ_INIT;
 
-        context->state = NV_READ_WAIT;
         fallthrough;
 
     statecase(context->state, NV_READ_WAIT)
         if (data) {
+            /* Read the data from the TPM. */
             r = ifapi_nv_read(context, data, &readSize);
             return_try_again(r);
 
@@ -268,21 +308,25 @@ Fapi_NvRead_Finish(
         }
 
         if (logData) {
+            /* Duplicate the logdata that may have been stored during a
+               NvExtend command. */
             strdup_check(*logData, object->misc.nv.event_log, r, error_cleanup);
         }
         fallthrough;
 
     statecase(context->state, NV_READ_CLEANUP)
+        /* Cleanup the session used for authorization. */
         r = ifapi_cleanup_session(context);
         try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
-        context->state =  _FAPI_STATE_INIT;
+        context->state = _FAPI_STATE_INIT;
         break;
 
     statecasedefault(context->state);
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     ifapi_cleanup_ifapi_object(&command->nv_object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
@@ -290,6 +334,6 @@ error_cleanup:
     SAFE_FREE(command->nvPath);
     //SAFE_FREE(context->nv_cmd.tes);
     ifapi_session_clean(context);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

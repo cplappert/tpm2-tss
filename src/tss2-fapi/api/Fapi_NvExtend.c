@@ -27,13 +27,13 @@
  *
  * Performs an extend operation on an NV index with the type extend.
  *
- * @param [in, out] context the FAPI context
- * @param [in] nvPath The path to the NV index that is extended
- * @param [in] data The data to extend on the NV index
- * @param [in] dataSize The size of the data to extend. Must be smaller than
- *             1024
- * @param [in] logData A JSON representation of the data that is written to the
- *         event log. May be NULL
+ * @param[in,out] context the FAPI context
+ * @param[in] nvPath The path to the NV index that is extended
+ * @param[in] data The data to extend on the NV index
+ * @param[in] dataSize The size of the data to extend. Must be smaller than
+ *            1024
+ * @param[in] logData A JSON representation of the data that is written to the
+ *        event log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, nvPath, or data is NULL.
@@ -46,6 +46,20 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvExtend(
@@ -98,7 +112,7 @@ Fapi_NvExtend(
 
     return_if_error_reset_state(r, "NV_Extend");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -108,17 +122,18 @@ Fapi_NvExtend(
  *
  * Call Fapi_NvExtend_Finish to finish the execution of this command.
  *
- * @param [in, out] context the FAPI context
- * @param [in] nvPath The path to the NV index that is extended
- * @param [in] data The data to extend on the NV index
- * @param [in] dataSize The size of the data to extend. Must be smaller than
- *             1024
- * @param [in] logData A JSON representation of the data that is written to the
- *         event log. May be NULL
+ * @param[in,out] context the FAPI context
+ * @param[in] nvPath The path to the NV index that is extended
+ * @param[in] data The data to extend on the NV index
+ * @param[in] dataSize The size of the data to extend. Must be smaller than
+ *            1024
+ * @param[in] logData A JSON representation of the data that is written to the
+ *            event log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, nvPath, or data is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
+ * @retval TSS2_FAPI_RC_BAD_VALUE: if dataSize is larger than 1024
  * @retval TSS2_FAPI_RC_BAD_PATH: if nvPath is not found.
  * @retval TSS2_FAPI_RC_NV_WRONG_TYPE: if the NV is not an extendable index.
  * @retval TSS2_FAPI_RC_POLICY_UNKNOWN: if the policy is unknown.
@@ -127,6 +142,11 @@ Fapi_NvExtend(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
  */
 TSS2_RC
 Fapi_NvExtend_Async(
@@ -152,28 +172,42 @@ Fapi_NvExtend_Async(
     check_not_null(nvPath);
     check_not_null(data);
 
+    /* Check for maximum allowed dataSize. */
+    if (dataSize > 1024) {
+        LOG_ERROR("dataSize exceeds allowed maximum of 1024. dataSize = %zi", dataSize);
+        return TSS2_FAPI_RC_BAD_VALUE;
+    }
+
     /* Helpful alias pointers */
     IFAPI_NV_Cmds * command = &context->nv_cmd;
 
     memset(command, 0 ,sizeof(IFAPI_NV_Cmds));
-    command->offset = 0;
-    command->data = malloc(dataSize);
-    goto_if_null2(command->data, "Out of memory", r, TSS2_FAPI_RC_MEMORY,
+
+    /* Copy parameters to context for use during _Finish. */
+    uint8_t *in_data = malloc(dataSize);
+    goto_if_null2(in_data, "Out of memory", r, TSS2_FAPI_RC_MEMORY,
             error_cleanup);
+    memcpy(in_data, data, dataSize);
+    command->data = in_data;
     strdup_check(command->nvPath, nvPath, r, error_cleanup);
     strdup_check(command->logData, logData, r, error_cleanup);
-
     command->numBytes = dataSize;
-    if (context->state == _FAPI_STATE_INIT)
-        ifapi_session_init(context);
 
+    /* Reset all context-internal session state information. */
+    r = ifapi_session_init(context);
+    return_if_error(r, "Initialize NV_Extend");
+
+    /* Load the nv index metadata from the keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, command->nvPath);
     goto_if_error2(r, "Could not open: %s", error_cleanup, command->nvPath);
 
+    /* Initialize the context state for this operation. */
     context->state = NV_EXTEND_READ;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->data);
     SAFE_FREE(command->nvPath);
     SAFE_FREE(command->logData);
@@ -184,7 +218,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_NvExtend.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -196,6 +230,19 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvExtend_Finish(
@@ -217,8 +264,7 @@ Fapi_NvExtend_Finish(
     /* Helpful alias pointers */
     IFAPI_NV_Cmds * command = &context->nv_cmd;
     TPM2B_MAX_NV_BUFFER *auxData = (TPM2B_MAX_NV_BUFFER *)&context->aux_data;
-    size_t dataIdx = command->data_idx;
-    ESYS_TR nvIndex =  command->esys_handle;
+    ESYS_TR nvIndex = command->esys_handle;
     const uint8_t *data = command->data;
     IFAPI_OBJECT *object = &command->nv_object;
     IFAPI_OBJECT *authObject = &command->auth_object;
@@ -238,14 +284,16 @@ Fapi_NvExtend_Finish(
             goto_error(r, TSS2_FAPI_RC_BAD_PATH, "%s is no NV object.", error_cleanup,
                        command->nvPath);
 
+        /* Initialize the NV index object for ESYS. */
         r = ifapi_initialize_object(context->esys, object);
         goto_if_error_reset_state(r, "Initialize NV object", error_cleanup);
 
         /* Store object info in context */
         nvIndex = command->nv_object.handle;
-        command->esys_handle =  context->nv_cmd.nv_object.handle;
+        command->esys_handle = context->nv_cmd.nv_object.handle;
         command->nv_obj = object->misc.nv;
 
+        /* Determine the kind of authorization to be used. */
         if (object->misc.nv.public.nvPublic.attributes & TPMA_NV_PPWRITE) {
             ifapi_init_hierarchy_object(authObject, ESYS_TR_RH_PLATFORM);
             authIndex = ESYS_TR_RH_PLATFORM;
@@ -260,42 +308,39 @@ Fapi_NvExtend_Finish(
         }
         command->auth_index = authIndex;
         context->primary_state = PRIMARY_INIT;
+
+        /* Start a session for authorization. */
         r = ifapi_get_sessions_async(context,
                                      IFAPI_SESSION_GENEK | IFAPI_SESSION1,
                                      TPMA_SESSION_DECRYPT, 0);
         goto_if_error_reset_state(r, "Create sessions", error_cleanup);
 
-
-        context->state = NV_EXTEND_WAIT_FOR_SESSION;
-        return TSS2_FAPI_RC_TRY_AGAIN;
+        fallthrough;
 
     statecase(context->state, NV_EXTEND_WAIT_FOR_SESSION)
-//TODO: Pass the namealg of the NV index into the session to be created
-        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile);
+        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile,
+                                      object->misc.nv.public.nvPublic.nameAlg);
         return_try_again(r);
-
         goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
 
-        if (command->numBytes > context->nv_buffer_max)
-            auxData->size = context->nv_buffer_max;
-        else
-            auxData->size = command->numBytes;
+        if (command->numBytes > TPM2_MAX_NV_BUFFER_SIZE) {
+            goto_error_reset_state(r, TSS2_FAPI_RC_BAD_VALUE,
+                                   "Buffer for NvExtend is too large.",
+                                   error_cleanup);
+        }
+
+        auxData->size = command->numBytes;
         memcpy(&auxData->buffer[0], &data[0], auxData->size);
         command->data_idx = auxData->size;
-
-        /* Authorization needed if NO_DA is not  set */
-        if (!(object->misc.nv.public.nvPublic.attributes & TPMA_NV_NO_DA)) {
-            r = ifapi_set_auth(context, authObject, "NV Extend");
-            goto_if_error_reset_state(r, "Fapi_NV_UndefineSpace", error_cleanup);
-        }
-        context->state = NV_EXTEND_AUTHORIZE;
         fallthrough;
 
     statecase(context->state, NV_EXTEND_AUTHORIZE)
+        /* Prepare the authorization data for the NV index. */
         r = ifapi_authorize_object(context, authObject, &auth_session);
         return_try_again(r);
         goto_if_error(r, "Authorize NV object.", error_cleanup);
 
+        /* Extend the data into the NV index. */
         r = Esys_NV_Extend_Async(context->esys,
                                  command->auth_index,
                                  nvIndex,
@@ -308,36 +353,15 @@ Fapi_NvExtend_Finish(
         command->bytesRequested = auxData->size;
         command->data = (uint8_t *)data;
 
-        context->state = NV_EXTEND_AUTH_SENT;
-        return TSS2_FAPI_RC_TRY_AGAIN;
+        fallthrough;
 
     statecase(context->state, NV_EXTEND_AUTH_SENT)
-
         r = Esys_NV_Extend_Finish(context->esys);
         return_try_again(r);
 
         goto_if_error_reset_state(r, "FAPI NV_Extend_Finish", error_cleanup);
 
         command->numBytes -= context->nv_cmd.bytesRequested;
-
-        if (command->numBytes > 0) {
-            if (command->numBytes > context->nv_buffer_max)
-                auxData->size = context->nv_buffer_max;
-            else
-                auxData->size = command->numBytes;
-            memcpy(&auxData->buffer[0], &data[dataIdx], auxData->size);
-            r = Esys_NV_Extend_Async(context->esys,
-                                     command->auth_index,
-                                     nvIndex,
-                                     context->session1,
-                                     ESYS_TR_NONE,
-                                     ESYS_TR_NONE,
-                                     auxData);
-            goto_if_error_reset_state(r, "FAPI NV_Extend", error_cleanup);
-
-            command->bytesRequested = auxData->size;
-            return TSS2_FAPI_RC_TRY_AGAIN;
-        }
 
         /* Compute Digest of the current event */
         hashAlg = object->misc.nv.public.nvPublic.nameAlg;
@@ -421,6 +445,7 @@ Fapi_NvExtend_Finish(
         fallthrough;
 
     statecase(context->state, NV_EXTEND_CLEANUP)
+        /* Cleanup the session. */
         r = ifapi_cleanup_session(context);
         try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
@@ -433,6 +458,7 @@ Fapi_NvExtend_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     if (command->jso_event_log)
         json_object_put(command->jso_event_log);
     ifapi_cleanup_ifapi_object(object);
@@ -449,6 +475,6 @@ error_cleanup:
     SAFE_FREE(command->logData);
     SAFE_FREE(object->misc.nv.event_log);
     ifapi_session_clean(context);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

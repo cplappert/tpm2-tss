@@ -2,14 +2,20 @@
 All notable changes to this project will be documented in this file.
 
 The format is based on [Keep a Changelog](http://keepachangelog.com/)
+## [2.4.1-RC0] - 2020-04-28
+### Fixed
+- Fix handling of tcti pointer in Esys\_Initialize
+- Fix usages of EC routines deprecated in OSSL 1.2 and greater
+- Fix FAPI handling of TPMs without stored certificates
 
-## [2.4.0]
+## [2.4.0] - 2020-03-11
 ### Added
 - Added a new Feature API (FAPI) implementation
 - Added Esys_TRSess_GetAuthRequired() ESAPI function
 - Added Esys_TR_GetTpmHandle() SAPI function
 - Added Esys_GetSysContext() SAPI function
 - Added the with-sanitizer configure option
+- Added CI for FreeBSD
 
 ### Changed
 - Changed MSSIM TCTI to be async capable
@@ -18,8 +24,12 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 - Improved CI builds
 - Converted builds to docker builds
 - Number of fixes and improvements in the test code
+- Changed tcti-device in non-async mode to allways block
 
 ### Fixed
+- Fixed hmac calculation for tpm2_clear command in ESAPI
+- Fixed mixing salted and unsalted sessions in the same ESAPI context
+- Removed use of VLAs from TPML marshal code
 - Fixed setting C++ compiler for non-fuzzing builds at configure
 - Fixed setting the name of session objects
 - Fixed page alignment errors in Sys_Get/SetAuths functions
@@ -31,6 +41,14 @@ The format is based on [Keep a Changelog](http://keepachangelog.com/)
 - Fixed segmentation fault in tctildr if name_conf was too big
 - Fixed memory leak in tctildr-tcti tests
 - Fixed HMAC generation for policy sessions
+- Added check for object node before calling compute_session_value function
+- Fixed auth calculation in Esys_StartAuthSession called with optional parameters
+- Fixed compute_encrypted_salt error handling in Esys_StartAuthSession
+- Fixed exported symbols map for libtss2-mu
+
+### Removed
+- Remove duplicate ESYS entries from map file
+- Removed the private implementation of strndup from tctildr
 
 ## [2.3.0] - 2019-08-13
 ### Added

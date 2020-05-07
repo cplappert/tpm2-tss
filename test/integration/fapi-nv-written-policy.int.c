@@ -22,20 +22,25 @@
 
 #define NV_SIZE 10
 
-/** Test the FAPI policy Policy_NvWritten.
+/** Test the FAPI policy PolicyNvWritten.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
  *  - Fapi_CreateNv()
+ *  - Fapi_SetAppData()
+ *  - Fapi_GetAppData()
  *  - Fapi_NvWrite()
- *  - Fapi_NvRead()
+ *  - Fapi_Delete()
+ *
+ * Tested Policies:
+ *  - PolicyNvWritten
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE
  * @retval EXIT_SUCCESS
  */
 int
-test_fapi_nv_written(FAPI_CONTEXT *context)
+test_fapi_nv_written_policy(FAPI_CONTEXT *context)
 {
     TSS2_RC r;
     char *nvPathOrdinary = "/nv/Owner/myNV";
@@ -117,5 +122,5 @@ error:
 int
 test_invoke_fapi(FAPI_CONTEXT *context)
 {
-    return test_fapi_nv_written(context);
+    return test_fapi_nv_written_policy(context);
 }

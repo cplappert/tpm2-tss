@@ -39,6 +39,7 @@ typedef struct {
     INT32                                    expiration;    /**< This value will be -1 by the FAPI */
     TPMT_SIGNATURE                                 auth;    /**< This value is generated from at runtime via a callback. */
     TPM2B_NAME                                publicKey;    /**< This will be automatically generated from keyPath, keyPublic */
+    char                                 *publicKeyHint;    /**< A human readable hint to denote which public key to use. */
     char                                       *keyPath;    /**< A reference to a key inside the FAPI keystore */
     TPMT_PUBLIC                               keyPublic;    /**< None */
     char                                        *keyPEM;    /**< <p>The TPM2B_NAME is constructed with a TPMT_PUBLIC from this */
@@ -280,13 +281,13 @@ struct TPML_POLICYELEMENTS {
     TPMT_POLICYELEMENT                         elements[];    /**< Array of policy elements */
 };
 
-/** Policy type TPMS_POLICY_HARNESS
+/** Policy type TPMS_POLICY
  */
-typedef struct TPMS_POLICY_HARNESS {
+typedef struct TPMS_POLICY {
     char                                   *description;    /**< O */
     TPML_DIGEST_VALUES                    policyDigests;    /**< O */
     struct TPML_POLICYAUTHORIZATIONS     *policyAuthorizations;    /**< O */
     struct TPML_POLICYELEMENTS                   *policy;    /**< X */
-} TPMS_POLICY_HARNESS;
+} TPMS_POLICY;
 
 #endif /* IFAPI_POLICY_TYPES_H */

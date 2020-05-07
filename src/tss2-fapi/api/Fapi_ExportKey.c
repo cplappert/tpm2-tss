@@ -33,12 +33,12 @@
  * package up the duplicated key and all keys below it into a file ready to move to
  * a new TPM.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pathOfKeyToDuplicate The path to the root of the subtree to
- *             export.
- * @param [in] pathToPublicKeyOfNewParent The path to the public key of the new
- *             parent. May be NULL
- * @param [out] exportedData The exported subtree
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pathOfKeyToDuplicate The path to the root of the subtree to
+ *            export.
+ * @param[in] pathToPublicKeyOfNewParent The path to the public key of the new
+ *            parent. May be NULL
+ * @param[out] exportedData The exported subtree
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, pathOfKeyToDuplicate
@@ -54,6 +54,22 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_ExportKey(
@@ -106,7 +122,7 @@ Fapi_ExportKey(
 
     return_if_error_reset_state(r, "ExportKey");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -118,11 +134,11 @@ Fapi_ExportKey(
  *
  * Call Fapi_ExportKey_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pathOfKeyToDuplicate The path to the root of the subtree to
- *             export.
- * @param [in] pathToPublicKeyOfNewParent The path to the public key of the new
- *             parent
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pathOfKeyToDuplicate The path to the root of the subtree to
+ *            export.
+ * @param[in] pathToPublicKeyOfNewParent The path to the public key of the new
+ *            parent
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or pathOfKeyToDuplicate
@@ -138,6 +154,12 @@ Fapi_ExportKey(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 Fapi_ExportKey_Async(
@@ -158,12 +180,13 @@ Fapi_ExportKey_Async(
     /* Helpful alias pointers */
     IFAPI_ExportKey * command = &context->cmd.ExportKey;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize NV_CreateNv");
 
+    /* Copy parameters to context for use during _Finish. */
     command->pathOfKeyToDuplicate = NULL;
     command->pathToPublicKeyOfNewParent = NULL;
-
     strdup_check(command->pathOfKeyToDuplicate, pathOfKeyToDuplicate,
                  r, error_cleanup);
     strdup_check(command->pathToPublicKeyOfNewParent,
@@ -175,6 +198,7 @@ Fapi_ExportKey_Async(
                                       pathOfKeyToDuplicate);
         return_if_error2(r, "Could not open: %s", pathOfKeyToDuplicate);
 
+        /* Initialize the context state for this operation. */
         context->state = EXPORT_KEY_READ_PUB_KEY;
     } else {
         /* The public key of the new parent is needed for duplication */
@@ -182,12 +206,14 @@ Fapi_ExportKey_Async(
                                       pathToPublicKeyOfNewParent);
         return_if_error2(r, "Could not open: %s", pathToPublicKeyOfNewParent);
 
+        /* Initialize the context state for this operation. */
         context->state = EXPORT_KEY_READ_PUB_KEY_PARENT;
     }
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 
- error_cleanup:
+error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->pathOfKeyToDuplicate);
     SAFE_FREE(command->pathToPublicKeyOfNewParent);
     return r;
@@ -197,8 +223,8 @@ Fapi_ExportKey_Async(
  *
  * This function should be called after a previous Fapi_ExportKey_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] exportedData The exported subtree
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] exportedData The exported subtree
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or exportedData is NULL.
@@ -210,6 +236,21 @@ Fapi_ExportKey_Async(
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_ExportKey_Finish(
@@ -240,6 +281,9 @@ Fapi_ExportKey_Finish(
 
     switch (context->state) {
         statecase(context->state, EXPORT_KEY_READ_PUB_KEY);
+            /* This is the entry point if only the public key shall be exported
+               because no new parent key for encrypting the private portion was
+               provided by the caller. */
             r = ifapi_keystore_load_finish(&context->keystore, &context->io,
                                            &commandObject);
             return_try_again(r);
@@ -255,6 +299,7 @@ Fapi_ExportKey_Finish(
             pubKey->objectType = IFAPI_EXT_PUB_KEY_OBJ;
             pubKey->misc.ext_pub_key.public = commandObject.misc.key.public;
 
+            /* Convert the TPM key format to PEM. */
             r = ifapi_pub_pem_key_from_tpm(&pubKey->misc.ext_pub_key.public,
                                            &pubKey->misc.ext_pub_key.pem_ext_public,
                                            &sizePem);
@@ -271,6 +316,8 @@ Fapi_ExportKey_Finish(
             break;
 
         statecase(context->state, EXPORT_KEY_READ_PUB_KEY_PARENT);
+            /* This is the entry point if a new parent key was provided and
+               the private portion shall be re-encrypted. */
             r = ifapi_keystore_load_finish(&context->keystore, &context->io,
                     &parentKeyObject);
             if (r != TSS2_RC_SUCCESS) {
@@ -283,30 +330,36 @@ Fapi_ExportKey_Finish(
                 goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "No public key in %s",
                            cleanup, command->pathToPublicKeyOfNewParent);
             }
+
+            /* Store the public information of the new parent in the context
+               and cleanup all other metadata for this key. */
             command->public_parent = parentKeyObject.misc.ext_pub_key.public;
             ifapi_cleanup_ifapi_object(&parentKeyObject);
+
+            /* Initialize a session used for authorization and parameter encryption. */
             r = ifapi_get_sessions_async(context,
                                          IFAPI_SESSION_GENEK | IFAPI_SESSION1,
                                          TPMA_SESSION_DECRYPT, 0);
             goto_if_error_reset_state(r, "Create sessions", cleanup);
 
-            context->state = EXPORT_KEY_WAIT_FOR_KEY;
             fallthrough;
 
         statecase(context->state, EXPORT_KEY_WAIT_FOR_KEY);
+            /* Load the key to be duplicated. */
             r = ifapi_load_key(context, command->pathOfKeyToDuplicate,
                                &command->key_object);
             return_try_again(r);
             goto_if_error(r, "Fapi load key.", cleanup);
 
             context->duplicate_key = command->key_object;
+
+            /* Load the new parent key. */
             r = Esys_LoadExternal_Async(context->esys,
                                         ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
                                         NULL,   &command->public_parent,
                                         TPM2_RH_OWNER);
             goto_if_error(r, "LoadExternal_Async", cleanup);
 
-            context->state = EXPORT_KEY_WAIT_FOR_EXT_KEY;
             fallthrough;
 
         statecase(context->state, EXPORT_KEY_WAIT_FOR_EXT_KEY);
@@ -314,11 +367,10 @@ Fapi_ExportKey_Finish(
                                          &command->handle_ext_key);
             try_again_or_error_goto(r, "Load external key.", cleanup);
 
-            context->state = EXPORT_KEY_WAIT_FOR_AUTHORIZATON;
             fallthrough;
 
         statecase(context->state, EXPORT_KEY_WAIT_FOR_AUTHORIZATON);
-
+            /* Authorize against the key to be exported. */
             r = ifapi_authorize_object(context, command->key_object, &auth_session);
             return_try_again(r);
             goto_if_error(r, "Authorize key.", cleanup);
@@ -329,6 +381,8 @@ Fapi_ExportKey_Finish(
             symmetric.algorithm = TPM2_ALG_NULL;
             encryptionKey.size = 0;
 
+            /* Duplicate the key; i.e. re-encrypt the private key with
+               the public key of the new parent. */
             r = Esys_Duplicate_Async(context->esys,
                                      command->key_object->handle,
                                      command->handle_ext_key,
@@ -337,14 +391,15 @@ Fapi_ExportKey_Finish(
                                      &encryptionKey, &symmetric);
             goto_if_error(r, "Duplicate", cleanup);
 
-            context->state = EXPORT_KEY_WAIT_FOR_DUPLICATE;
             fallthrough;
 
-        statecase(context->state,  EXPORT_KEY_WAIT_FOR_DUPLICATE);
+        statecase(context->state, EXPORT_KEY_WAIT_FOR_DUPLICATE);
             exportTree->objectType = IFAPI_DUPLICATE_OBJ;
             r = Esys_Duplicate_Finish(context->esys, NULL, &duplicate, &encryptedSeed);
             try_again_or_error_goto(r, "Duplicate", cleanup);
 
+            /* Store and JSON encode the data to be returned. */
+            /* Note: keyTree = &exportTree->misc.key_tree */
             keyTree->encrypted_seed = *encryptedSeed;
             SAFE_FREE(encryptedSeed);
             keyTree->duplicate = *duplicate;
@@ -352,27 +407,33 @@ Fapi_ExportKey_Finish(
             keyTree->public =
                 command->key_object->misc.key.public;
             keyTree->public_parent = command->public_parent;
+
+            /* For the policy added no cleanup is needed. The cleanup will
+               be done with the object cleanup. */
+            keyTree->policy = command->key_object->policy;
             r = ifapi_get_json(context, exportTree, exportedData);
             goto_if_error2(r, "get JSON for exported data.", cleanup);
 
-            context->state = EXPORT_KEY_WAIT_FOR_FLUSH1;
             fallthrough;
 
         statecase(context->state, EXPORT_KEY_WAIT_FOR_FLUSH1);
+            /* Flush the key to be exported from the TPM. */
             r = ifapi_flush_object(context, command->key_object->handle);
             return_try_again(r);
             goto_if_error(r, "Flush key", cleanup);
 
-            context->state = EXPORT_KEY_WAIT_FOR_FLUSH2;
             fallthrough;
 
         statecase(context->state, EXPORT_KEY_WAIT_FOR_FLUSH2);
+            /* Flush the new parent key from the TPM. */
             r = ifapi_flush_object(context, command->handle_ext_key);
             return_try_again(r);
             goto_if_error(r, "Flush key", cleanup);
+
             fallthrough;
 
         statecase(context->state, EXPORT_KEY_CLEANUP)
+            /* Cleanup the sessions used for authorization. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", cleanup);
 
@@ -382,6 +443,7 @@ Fapi_ExportKey_Finish(
     }
 
 cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     if (command->key_object) {
         ifapi_cleanup_ifapi_object(command->key_object);
     }
@@ -400,6 +462,6 @@ cleanup:
     SAFE_FREE(pubKey->misc.ext_pub_key.certificate);
     SAFE_FREE(command->pathOfKeyToDuplicate);
     SAFE_FREE(command->pathToPublicKeyOfNewParent);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

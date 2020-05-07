@@ -24,22 +24,31 @@
  * Write the policyDigest of a policy to an NV index so it can be used in policies
  * containing PolicyAuthorizeNV elements.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path of the NV index
- * @param [in] policyPath The path of the new policy
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path of the NV index
+ * @param[in] policyPath The path of the new policy
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if nvPath or policyPath does not map to a
  *         FAPI policy or NV index.
- * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory
-           for internal operations or return parameters.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_WriteAuthorizeNv(
@@ -90,7 +99,7 @@ Fapi_WriteAuthorizeNv(
 
     return_if_error_reset_state(r, "WriteAuthorizeNV");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -101,22 +110,27 @@ Fapi_WriteAuthorizeNv(
  *
  * Call Fapi_WriteAuthorizeNv_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path of the NV index
- * @param [in] policyPath The path of the new policy
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path of the NV index
+ * @param[in] policyPath The path of the new policy
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if nvPath or policyPath does not map to a
  *         FAPI policy or NV index.
- * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory
-           for internal operations or return parameters.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 Fapi_WriteAuthorizeNv_Async(
@@ -139,19 +153,25 @@ Fapi_WriteAuthorizeNv_Async(
     IFAPI_api_WriteAuthorizeNv * command = &context->cmd.WriteAuthorizeNV;
     IFAPI_NV_Cmds * nvCmd = &context->nv_cmd;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize WriterAuthorizeNv");
 
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->policyPath, policyPath, r, error_cleanup);
     strdup_check(nvCmd->nvPath, nvPath, r, error_cleanup);
 
+    /* Load the metadata for the NV index to be written to from the keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, nvCmd->nvPath);
     goto_if_error2(r, "Could not open: %s", error_cleanup, nvCmd->nvPath);
 
+    /* Initialize the context state for this operation. */
     context->state = WRITE_AUTHORIZE_NV_READ_NV;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->policyPath);
     SAFE_FREE(nvCmd->nvPath);
     return r;
@@ -161,7 +181,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_WriteAuthorizeNv_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -173,6 +193,13 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_WriteAuthorizeNv_Finish(
@@ -193,7 +220,7 @@ Fapi_WriteAuthorizeNv_Finish(
     IFAPI_NV_Cmds * nvCmd = &context->nv_cmd;
     IFAPI_OBJECT *object = &nvCmd->nv_object;
     TPMI_ALG_HASH hashAlg;
-    TPMS_POLICY_HARNESS * policyHarness = &context->policy.harness;
+    TPMS_POLICY * policy = &context->policy.policy;
 
     switch (context->state) {
         statecase(context->state, WRITE_AUTHORIZE_NV_READ_NV)
@@ -208,16 +235,18 @@ Fapi_WriteAuthorizeNv_Finish(
             return_if_error_reset_state(r, "read_finish failed");
 
             ifapi_cleanup_ifapi_object(object);
+
+            /* Initialize the NV index object to be used with esys. */
             r = ifapi_initialize_object(context->esys, object);
             goto_if_error_reset_state(r, "Initialize NV object", error_cleanup);
 
-            context->state = WRITE_AUTHORIZE_NV_CALCULATE_POLICY;
             fallthrough;
 
         statecase(context->state, WRITE_AUTHORIZE_NV_CALCULATE_POLICY)
+            /* Calculate the policy digest for the referenced policy. */
             hashAlg = object->misc.nv.public.nvPublic.nameAlg;
             r = ifapi_calculate_tree(context, command->policyPath,
-                    policyHarness, hashAlg, &command->digest_idx,
+                    policy, hashAlg, &command->digest_idx,
                     &command->hash_size);
             if (r != TSS2_RC_SUCCESS) {
                 ifapi_cleanup_ifapi_object(object);
@@ -225,39 +254,27 @@ Fapi_WriteAuthorizeNv_Finish(
             return_try_again(r);
             goto_if_error(r, "Fapi calculate tree.", error_cleanup);
 
-            r = ifapi_get_sessions_async(context, IFAPI_SESSION_GENEK | IFAPI_SESSION1,
-                    TPMA_SESSION_DECRYPT, 0);
-            goto_if_error_reset_state(r, "Create sessions", error_cleanup);
-
-            context->state = WRITE_AUTHORIZE_NV_WAIT_FOR_SESSION;
-            fallthrough;
-
-        statecase(context->state, WRITE_AUTHORIZE_NV_WAIT_FOR_SESSION)
-    //TODO: Pass the namealg of the NV index into the session to be created
-            r = ifapi_get_sessions_finish(context, &context->profiles.default_profile);
-            return_try_again(r);
-            goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
-
-            context->state = WRITE_AUTHORIZE_NV_WRITE_NV_RAM;
             fallthrough;
 
         statecase(context->state, WRITE_AUTHORIZE_NV_WRITE_NV_RAM_PREPARE)
 
-            /* Copy hash alg followed by digest into buffer to be written to NV ram */
+            /* Copy hash alg followed by digest into a buffer to be written to NV ram */
             r = Tss2_MU_TPMI_ALG_HASH_Marshal(
                     object->misc.nv.public.nvPublic.nameAlg,
                     &nvBuffer[0], maxNvSize, &offset);
             goto_if_error_reset_state(r, "FAPI marshal hash alg", error_cleanup);
 
             void * currentDigest =
-                &policyHarness->policyDigests.digests[command->digest_idx].digest;
+                &policy->policyDigests.digests[command->digest_idx].digest;
             memcpy(&nvBuffer[offset], currentDigest, command->hash_size);
 
+            /* Store these data in the context to be used for re-entry on nv_write. */
             nvCmd->data = &nvBuffer[0];
             nvCmd->numBytes = command->hash_size + sizeof(TPMI_ALG_HASH);
             fallthrough;
 
         statecase(context->state, WRITE_AUTHORIZE_NV_WRITE_NV_RAM)
+            /* Perform the actual NV Write operation. */
             r = ifapi_nv_write(context, nvCmd->nvPath, 0,
                     nvCmd->data, context->nv_cmd.numBytes);
             return_try_again(r);
@@ -273,7 +290,6 @@ Fapi_WriteAuthorizeNv_Finish(
             goto_if_error_reset_state(r, "Could not open: %sh", error_cleanup,
                     nvCmd->nvPath);
 
-            context->state = WRITE_AUTHORIZE_NV_WRITE_OBJCECT;
             fallthrough;
 
         statecase(context->state, WRITE_AUTHORIZE_NV_WRITE_OBJCECT)
@@ -282,17 +298,16 @@ Fapi_WriteAuthorizeNv_Finish(
             return_try_again(r);
             return_if_error_reset_state(r, "write_finish failed");
 
-            context->state = WRITE_AUTHORIZE_NV_WRITE_POLICY;
             fallthrough;
 
         statecase(context->state, WRITE_AUTHORIZE_NV_WRITE_POLICY_PREPARE)
             r = ifapi_policy_store_store_async(&context->pstore, &context->io,
-                                               command->policyPath, policyHarness);
+                                               command->policyPath, policy);
             goto_if_error_reset_state(r, "Could not open: %s", error_cleanup,
                     command->policyPath);
             fallthrough;
 
-        statecase(context->state,  WRITE_AUTHORIZE_NV_WRITE_POLICY)
+        statecase(context->state, WRITE_AUTHORIZE_NV_WRITE_POLICY)
             /* Save policy with computed digest */
             r = ifapi_policy_store_store_finish(&context->pstore, &context->io);
             return_try_again(r);
@@ -301,6 +316,7 @@ Fapi_WriteAuthorizeNv_Finish(
             fallthrough;
 
         statecase(context->state, WRITE_AUTHORIZE_NV_CLEANUP)
+            /* Cleanup the session used for authorizing access to the NV index. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", error_cleanup);
             context->state = _FAPI_STATE_INIT;
@@ -310,14 +326,15 @@ Fapi_WriteAuthorizeNv_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     SAFE_FREE(command->policyPath);
     SAFE_FREE(nvCmd->nvPath);
     ifapi_session_clean(context);
-    ifapi_cleanup_policy_harness(policyHarness);
+    ifapi_cleanup_policy(policy);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_cleanup_ifapi_object(object);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

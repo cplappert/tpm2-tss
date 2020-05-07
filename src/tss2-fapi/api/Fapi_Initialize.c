@@ -32,8 +32,8 @@
  * Initializes a FAPI_CONTEXT that holds all the state and metadata information
  * during an interaction with the TPM.
  *
- * @param context [out] The FAPI_CONTEXT
- * @param uri [in] Unused in this version of the FAPI. Must be NULL
+ * @param[out] context The FAPI_CONTEXT
+ * @param[in] uri Unused in this version of the FAPI. Must be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -41,6 +41,13 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_BAD_SEQUENCE if the context has an asynchronous
+ *         operation already pending.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Initialize(
@@ -73,7 +80,7 @@ Fapi_Initialize(
         r = Fapi_Initialize_Finish(context);
     } while ((r & ~TSS2_RC_LAYER_MASK) == TSS2_BASE_RC_TRY_AGAIN);
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }
 
@@ -84,8 +91,8 @@ Fapi_Initialize(
  *
  * Call Fapi_Initialize to finish the execution of this command.
  *
- * @param context [out] The FAPI_CONTEXT
- * @param uri [in] Unused in this version of the FAPI. Must be NULL
+ * @param[out] context The FAPI_CONTEXT
+ * @param[in] uri Unused in this version of the FAPI. Must be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -123,12 +130,13 @@ Fapi_Initialize_Async(
     r = ifapi_config_initialize_async(&(*context)->io);
     goto_if_error(r, "Could not initialize FAPI context", cleanup_return);
 
+    /* Initialize the context state for this operation. */
     (*context)->state = INITIALIZE_READ;
 
 cleanup_return:
     if (r)
         SAFE_FREE(*context);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }
 
@@ -136,7 +144,7 @@ cleanup_return:
  *
  * This function should be called after a previous Fapi_Initialize_Async.
  *
- * @param [out] context The FAPI_CONTEXT
+ * @param[out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -148,6 +156,11 @@ cleanup_return:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Initialize_Finish(
@@ -168,58 +181,62 @@ Fapi_Initialize_Finish(
 
     switch ((*context)->state) {
     statecase((*context)->state, INITIALIZE_READ);
+        /* This is the entry point; finishing the initialization of the config module. */
         r = ifapi_config_initialize_finish(&(*context)->io, &(*context)->config);
         return_try_again(r);
         goto_if_error(r, "Could not finish initialization", cleanup_return);
 
+        /* Initialize the event log module. */
         r = ifapi_eventlog_initialize(&((*context)->eventlog), (*context)->config.log_dir);
         goto_if_error(r, "Initializing evenlog module", cleanup_return);
 
+        /* Initialize the keystore. */
         r = ifapi_keystore_initialize(&((*context)->keystore),
                                       (*context)->config.keystore_dir,
                                       (*context)->config.user_dir,
                                       (*context)->config.profile_name);
         goto_if_error2(r, "Keystore could not be initialized.", cleanup_return);
 
+        /* Initialize the policy store. */
         /* Policy directory will be placed in keystore dir */
         r = ifapi_policy_store_initialize(&((*context)->pstore),
                                           (*context)->config.keystore_dir);
         goto_if_error2(r, "Keystore could not be initialized.", cleanup_return);
 
-//        (*context)->config.user_dir = (*context)->keystore.userdir;
-
-        (*context)->state = INITIALIZE_INIT_TCTI;
         fallthrough;
 
     statecase((*context)->state, INITIALIZE_INIT_TCTI);
         if (strcasecmp((*context)->config.tcti, "none") == 0) {
             /* FAPI will be used in none TPM mode */
-            (*context)->esys =  NULL;
+            (*context)->esys = NULL;
             (*context)->state = INITIALIZE_READ_PROFILE_INIT;
             return TSS2_FAPI_RC_TRY_AGAIN;
         }
 
+        /* Call for the TctiLdr to initialize a TCTI context given the config
+           from the FAPI config module. */
         r = Tss2_TctiLdr_Initialize((*context)->config.tcti, &fapi_tcti);
         goto_if_error(r, "Initializing TCTI.", cleanup_return);
+
+        /* Initialize an ESYS context using this Tcti. */
         r = Esys_Initialize(&((*context)->esys), fapi_tcti, NULL);
         goto_if_error(r, "Initialize esys context.", cleanup_return);
 
+        /* Call Startup on the TPM. */
         r = Esys_Startup((*context)->esys, TPM2_SU_CLEAR);
         if (r != TSS2_RC_SUCCESS && r != TPM2_RC_INITIALIZE) {
             LOG_ERROR("Esys_Startup FAILED! Response Code : 0x%x", r);
             return r;
         }
-        (*context)->state = INITIALIZE_GET_CAP;
         fallthrough;
 
     statecase((*context)->state, INITIALIZE_GET_CAP);
-        /* Determine the maximal value for transfer of nv data */
+        /* Retrieve the maximal value for transfer of nv data from the TPM. */
         r = Esys_GetCapability_Async((*context)->esys, ESYS_TR_NONE, ESYS_TR_NONE,
                                      ESYS_TR_NONE,
                                      TPM2_CAP_TPM_PROPERTIES, TPM2_PT_NV_BUFFER_MAX, 1);
         goto_if_error(r, "Error json deserialize", cleanup_return);
 
-        (*context)->state = INITIALIZE_WAIT_FOR_CAP;
         fallthrough;
 
     statecase((*context)->state, INITIALIZE_WAIT_FOR_CAP);
@@ -227,24 +244,33 @@ Fapi_Initialize_Finish(
         return_try_again(r);
         goto_if_error(r, "Get capability data.", cleanup_return);
 
+        /* Check if the TPM returns the NV_BUFFER_MAX value. */
         if ((*capability)->data.tpmProperties.count == 1 &&
                 (*capability)->data.tpmProperties.tpmProperty[0].property ==
                 TPM2_PT_NV_BUFFER_MAX) {
             (*context)->nv_buffer_max = (*capability)->data.tpmProperties.tpmProperty[0].value;
+            /* FAPI also contains an upper limit on the NV_MAX_BUFFER size. This is
+               useful for vTPMs that could in theory allow for several Megabytes of
+               max transfer buffer sizes. */
             if ((*context)->nv_buffer_max > IFAPI_MAX_BUFFER_SIZE)
                 (*context)->nv_buffer_max = IFAPI_MAX_BUFFER_SIZE;
         } else {
+            /* Note that for some time it was legal for a TPM to not return this value.
+               in that case FAPI falls back to 64 bytes for NV_BUFFER_MAX that all TPMs
+               must support. This slows down communication for NV read and write but
+               ensures that data can be exchanged with the TPM. */
             (*context)->nv_buffer_max = 64;
         }
         fallthrough;
 
     statecase((*context)->state, INITIALIZE_READ_PROFILE_INIT);
+        /* Initialize the proviles module that loads cryptographic profiles.
+           The default profile is taken from config. */
         r = ifapi_profiles_initialize_async(&(*context)->profiles, &(*context)->io,
                                             (*context)->config.profile_dir,
                                             (*context)->config.profile_name);
         return_if_error(r, "Read profile");
 
-        (*context)->state = INITIALIZE_READ_PROFILE;
         fallthrough;
 
     statecase((*context)->state, INITIALIZE_READ_PROFILE);
@@ -259,10 +285,11 @@ Fapi_Initialize_Finish(
 
     (*context)->state = _FAPI_STATE_INIT;
     SAFE_FREE(*capability);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 
 cleanup_return:
+    /* Cleanup any intermediate results and state stored in the context. */
     if ((*context)->esys) {
         Esys_GetTcti((*context)->esys, &fapi_tcti);
         Esys_Finalize(&(*context)->esys);
@@ -270,6 +297,8 @@ cleanup_return:
     if (fapi_tcti) {
         Tss2_TctiLdr_Finalize(&fapi_tcti);
     }
+
+    /* Free the context memory in case of an error. */
     free(*context);
     *context = NULL;
 

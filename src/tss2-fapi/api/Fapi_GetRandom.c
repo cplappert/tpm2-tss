@@ -24,9 +24,9 @@
  * Creates an array with a specified number of bytes. May execute the underlying
  * TPM command multiple times if the requested number of bytes is too big.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] numBytes The number of bytes requested from the TPM
- * @param [out] data The array of random bytes returned from the TPM
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] numBytes The number of bytes requested from the TPM
+ * @param[out] data The array of random bytes returned from the TPM
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or data is NULL.
@@ -37,6 +37,20 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_GetRandom(
@@ -86,7 +100,7 @@ Fapi_GetRandom(
 
     return_if_error_reset_state(r, "GetRandom");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -97,8 +111,8 @@ Fapi_GetRandom(
  *
  * Call Fapi_GetRandom_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] numBytes The number of bytes requested from the TPM
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] numBytes The number of bytes requested from the TPM
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -109,6 +123,11 @@ Fapi_GetRandom(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
  */
 TSS2_RC
 Fapi_GetRandom_Async(
@@ -126,18 +145,23 @@ Fapi_GetRandom_Async(
     /* Helpful alias pointers */
     IFAPI_GetRandom * command = &context->get_random;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize GetRandom");
 
+    /* Copy parameters to context for use during _Finish. */
     command->numBytes = numBytes;
     command->data = NULL;
 
+    /* Start a session for integrity protection and encryption of random data. */
     r = ifapi_get_sessions_async(context,
                                  IFAPI_SESSION_GENEK | IFAPI_SESSION1,
                                  TPMA_SESSION_ENCRYPT | TPMA_SESSION_DECRYPT, 0);
     return_if_error_reset_state(r, "Create FAPI session");
+
+    /* Initialize the context state for this operation. */
     context->state = GET_RANDOM_WAIT_FOR_SESSION;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -145,8 +169,8 @@ Fapi_GetRandom_Async(
  *
  * This function should be called after a previous Fapi_GetRandom_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] data The array of random bytes returned from the TPM
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] data The array of random bytes returned from the TPM
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or data is NULL.
@@ -158,6 +182,18 @@ Fapi_GetRandom_Async(
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_GetRandom_Finish(
@@ -177,21 +213,25 @@ Fapi_GetRandom_Finish(
 
     switch (context->state) {
         statecase(context->state, GET_RANDOM_WAIT_FOR_SESSION);
-            r = ifapi_get_sessions_finish(context, &context->profiles.default_profile);
+        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile,
+                                      context->profiles.default_profile.nameAlg);
             return_try_again(r);
             goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
 
             context->get_random_state = GET_RANDOM_INIT;
-            context->state = GET_RANDOM_WAIT_FOR_RANDOM;
+
             fallthrough;
 
         statecase(context->state, GET_RANDOM_WAIT_FOR_RANDOM);
+            /* Retrieve the random data from the TPM.
+               This may involve several Esys_GetRandom calls. */
             r = ifapi_get_random(context, command->numBytes, data);
             return_try_again(r);
-            goto_if_error_reset_state(r, " FAPI GetRandom", error_cleanup);
+            goto_if_error_reset_state(r, "FAPI GetRandom", error_cleanup);
             fallthrough;
 
-            statecase(context->state, GET_RANDOM_CLEANUP)
+        statecase(context->state, GET_RANDOM_CLEANUP)
+            /* Cleanup the session. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
@@ -200,6 +240,7 @@ Fapi_GetRandom_Finish(
         statecasedefault(context->state);
     }
 
+    /* Cleanup any intermediate results and state stored in the context. */
     context->state = _FAPI_STATE_INIT;
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_session_clean(context);
@@ -207,9 +248,10 @@ Fapi_GetRandom_Finish(
     return TSS2_RC_SUCCESS;
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_session_clean(context);
     SAFE_FREE(context->get_random.data);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

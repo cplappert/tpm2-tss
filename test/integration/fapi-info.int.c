@@ -16,11 +16,12 @@
 #include "util/log.h"
 #include "util/aux_util.h"
 
-/** Test the FAPI functions for quote commands.
+/** Test the FAPI functions for GetInfo.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
- *  - Fapi_GetTPMInfo()
+ *  - Fapi_GetInfo()
+ *  - Fapi_Delete()
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE

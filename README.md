@@ -1,5 +1,6 @@
 [![Linux Build Status](https://travis-ci.org/tpm2-software/tpm2-tss.svg?branch=master)](https://travis-ci.org/tpm2-software/tpm2-tss)
 [![Windows Build status](https://ci.appveyor.com/api/projects/status/2rdmyn1ndkiavngn?svg=true)](https://ci.appveyor.com/project/tpm2-software/tpm2-tss)
+[![FreeBSD Build status](https://api.cirrus-ci.com/github/tpm2-software/tpm2-tss.svg?branch=master)](https://cirrus-ci.com/github/tpm2-software/tpm2-tss)
 [![Coverity Scan](https://img.shields.io/coverity/scan/3997.svg)](https://scan.coverity.com/projects/tpm2-tss)
 [![Coverage Status](https://codecov.io/gh/tpm2-software/tpm2-tss/branch/master/graph/badge.svg)](https://codecov.io/gh/tpm2-software/tpm2-tss)
 [![CII Best Practices](https://bestpractices.coreinfrastructure.org/projects/2332/badge)](https://bestpractices.coreinfrastructure.org/projects/2332)
@@ -13,6 +14,10 @@
 This repository hosts source code implementing the Trusted Computing Group's (TCG) TPM2 Software Stack (TSS).
 This stack consists of the following layers from top to bottom:
 
+* Feature API (FAPI) as described in the [TSS 2.0 Feature API Specification](https://trustedcomputinggroup.org/wp-content/uploads/TSS_FAPI_v0.94_r04_pubrev.pdf)
+along with [TSS 2.0 JSON Data Types and Policy Language Specification](https://trustedcomputinggroup.org/wp-content/uploads/TSS_JSON_Policy_v0.7_r04_pubrev.pdf)
+This API is designed to be very high-level API, intended to make programming with the TPM as simple as possible.
+The API functions are exposed through a single library: libtss2-fapi.
 * Enhanced System API (ESAPI) as described in the [TSS 2.0 Enhanced System API (ESAPI) Specification](https://trustedcomputinggroup.org/wp-content/uploads/TSS_ESAPI_Version-0.9_Revision-04_reviewEND030918.pdf).
 This API is a 1-to-1 mapping of the TPM2 commands documented in Part 3 of the TPM2 specification.
 Additionally there are asynchronous versions of each command.

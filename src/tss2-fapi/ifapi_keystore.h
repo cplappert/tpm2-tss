@@ -13,7 +13,6 @@
 #include "tss2_tpm2_types.h"
 #include "fapi_types.h"
 #include "ifapi_policy_types.h"
-#include "ifapi_object.h"
 #include "tss2_esys.h"
 
 typedef UINT32 IFAPI_OBJECT_TYPE_CONSTANT;
@@ -80,6 +79,7 @@ typedef struct {
     TPM2B_PUBLIC                                 public; /**< The public information of the key to be duplicated */
     TPM2B_PUBLIC                          public_parent; /**< The public information of the new parent key */
     char                                   *certificate; /**< The certificate of the key to be duplicated */
+    TPMS_POLICY                                 *policy; /**< The policy of the key to be duplicated */
 } IFAPI_DUPLICATE;
 
 /** type for representing public info of a TPM-Resource
@@ -89,7 +89,7 @@ typedef union {
     IFAPI_KEY                                       key;    /**< Public info for key objects */
     IFAPI_NV                                         nv;    /**< Public info for NV ram objects */
     IFAPI_DUPLICATE                            key_tree;    /**< Information for key duplication */
-    IFAPI_HIERARCHY                           hierarchy;    /**< Information related ot hierarchies */
+    IFAPI_HIERARCHY                           hierarchy;    /**< Information related to hierarchies */
 } IFAPI_OBJECT_UNION;
 
 /** The states for key searching */
@@ -135,7 +135,7 @@ enum IFAPI_IO_STATE {
 /** Type for representing TPM-Resource
  */
 typedef struct _IFAPI_OBJECT {
-    TPMS_POLICY_HARNESS                 *policy_harness;
+    TPMS_POLICY                                 *policy;
     IFAPI_OBJECT_TYPE_CONSTANT               objectType;    /**< Selector for object type */
     IFAPI_OBJECT_UNION                             misc;    /**< Resource specific information */
     TPMI_YES_NO                                  system;    /**< Store the object in the system wide

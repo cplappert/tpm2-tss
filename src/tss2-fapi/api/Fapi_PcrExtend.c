@@ -22,12 +22,12 @@
  *
  * Performs an extend operation on a given PCR.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pcr The PCR to extend
- * @param [in] data The data that is to be extended on the PCR
- * @param [in] dataSize The size of data in bytes
- * @param [in] logData A JSON representation of data to be written to the PCR's
- *             event log. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pcr The PCR to extend
+ * @param[in] data The data that is to be extended on the PCR
+ * @param[in] dataSize The size of data in bytes
+ * @param[in] logData A JSON representation of data to be written to the PCR's
+ *            event log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or data is NULL.
@@ -38,6 +38,22 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_PcrExtend(
@@ -89,7 +105,7 @@ Fapi_PcrExtend(
 
     return_if_error_reset_state(r, "PcrExtend");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -99,12 +115,12 @@ Fapi_PcrExtend(
  *
  * Call Fapi_PcrExtend_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] pcr The PCR to extend
- * @param [in] data The data that is to be extended on the PCR
- * @param [in] dataSize The size of data in bytes
- * @param [in] logData A JSON representation of data to be written to the PCR's
- *             event log. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] pcr The PCR to extend
+ * @param[in] data The data that is to be extended on the PCR
+ * @param[in] dataSize The size of data in bytes
+ * @param[in] logData A JSON representation of data to be written to the PCR's
+ *            event log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or data is NULL.
@@ -115,6 +131,11 @@ Fapi_PcrExtend(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_PcrExtend_Async(
@@ -142,14 +163,17 @@ Fapi_PcrExtend_Async(
     /* Helpful alias pointers */
     IFAPI_PCR * command = &context->cmd.pcr;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     goto_if_error(r, "Initialize PcrExtend", error_cleanup);
 
+    /* Perform some sanity checks on the input. */
     if (dataSize > 1024 || dataSize == 0) {
         goto_error(r, TSS2_FAPI_RC_BAD_VALUE,
                 "Event size must be > 1024 and != 0", error_cleanup);
     }
 
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->logData, logData, r, error_cleanup);
     command->event.size = dataSize;
     memcpy(&command->event.buffer[0], data, dataSize);
@@ -159,10 +183,14 @@ Fapi_PcrExtend_Async(
                                  ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
                                  TPM2_CAP_PCRS, 0, 1);
     goto_if_error(r, "Esys_GetCapability_Async", error_cleanup);
+
+    /* Initialize the context state for this operation. */
     context->state = PCR_EXTEND_WAIT_FOR_GET_CAP;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->logData);
     return r;
 }
@@ -171,7 +199,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_PcrExtend_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -183,6 +211,18 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_PcrExtend_Finish(
@@ -208,27 +248,27 @@ Fapi_PcrExtend_Finish(
             return_try_again(r);
             goto_if_error_reset_state(r, "GetCapablity_Finish", error_cleanup);
 
-            /* Prepare Session */
+            /* Prepare session used for integrity protecting the PCR Event operation. */
             r = ifapi_get_sessions_async(context,
                                          IFAPI_SESSION_GENEK | IFAPI_SESSION1,
                                          0, 0);
             goto_if_error_reset_state(r, "Create sessions", error_cleanup);
 
-            context->state = PCR_EXTEND_WAIT_FOR_SESSION;
             fallthrough;
 
         statecase(context->state, PCR_EXTEND_WAIT_FOR_SESSION);
-            r = ifapi_get_sessions_finish(context, &context->profiles.default_profile);
+            r = ifapi_get_sessions_finish(context, &context->profiles.default_profile,
+                                          context->profiles.default_profile.nameAlg);
             return_try_again(r);
             goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
 
+            /* Call PCR Event on the TPM, which performs an extend to all banks. */
             r = Esys_PCR_Event_Async(context->esys, command->pcrIndex,
                                      context->session1, ESYS_TR_NONE, ESYS_TR_NONE,
                                      &command->event);
             return_if_error(r, "Esys_PCR_Event_Async");
             command->event_digests = NULL;
 
-            context->state = PCR_EXTEND_FINISH;
             fallthrough;
 
         statecase(context->state, PCR_EXTEND_FINISH);
@@ -236,6 +276,7 @@ Fapi_PcrExtend_Finish(
             return_try_again(r);
             goto_if_error_reset_state(r, "PCR_Extend_Finish", error_cleanup);
 
+            /* Construct the eventLog entry. */
             pcrEvent->digests = *command->event_digests;
             pcrEvent->pcr = command->pcrIndex;
             pcrEvent->type = IFAPI_TSS_EVENT_TAG;
@@ -247,11 +288,11 @@ Fapi_PcrExtend_Finish(
                 subEvent->event = NULL;
             }
 
+            /* Append the eventLog entry to the event log. */
             r = ifapi_eventlog_append_async(&context->eventlog, &context->io,
                                             &command->pcr_event);
             goto_if_error(r, "Error ifapi_eventlog_append_async", error_cleanup);
 
-            context->state = PCR_EXTEND_APPEND_EVENT_LOG;
             fallthrough;
 
         statecase(context->state, PCR_EXTEND_APPEND_EVENT_LOG);
@@ -263,6 +304,7 @@ Fapi_PcrExtend_Finish(
             fallthrough;
 
         statecase(context->state, PCR_EXTEND_CLEANUP)
+            /* Cleanup the session used for integrity checking. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
@@ -273,6 +315,7 @@ Fapi_PcrExtend_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     SAFE_FREE(*capabilityData);
     SAFE_FREE(command->event_digests);
     SAFE_FREE(command->logData);
@@ -281,6 +324,6 @@ error_cleanup:
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_cleanup_event(pcrEvent);
     ifapi_session_clean(context);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

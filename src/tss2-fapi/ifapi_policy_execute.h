@@ -18,26 +18,11 @@
 
 TSS2_RC
 ifapi_extend_authorization(
-    TPMS_POLICY_HARNESS *harness,
+    TPMS_POLICY *policy,
     TPMS_POLICYAUTHORIZATION *authorization);
 
-TSS2_RC
-ifapi_execute_policy_or(
-    FAPI_CONTEXT *context,
-    TPMS_POLICYOR *policy,
-    TPMI_ALG_HASH current_hash_alg,
-    size_t digest_idx,
-    IFAPI_POLICY_EXEC_CTX *current_policy);
-
-TSS2_RC
-ifapi_execute_policy_element(
-    FAPI_CONTEXT *context,
-    TPML_POLICYELEMENTS *policy,
-    TPMI_ALG_HASH hash_alg,
-    IFAPI_POLICY_EXEC_CTX *current_policy);
-
 typedef TSS2_RC(*Policy_Compare_Object)(
-    TPMS_POLICY_HARNESS *policy,
+    TPMS_POLICY *policy,
     void *object1,
     void *object2,
     bool *found);
@@ -48,7 +33,7 @@ typedef TSS2_RC(*Policy_Compare_Object)(
  */
 struct POLICY_LIST {
     const char *path;            /**< The path of the policy object */
-    TPMS_POLICY_HARNESS policy;  /**< The policy object */
+    TPMS_POLICY policy;          /**< The policy object */
     struct POLICY_LIST *next;    /**< Pointer to next element */
 };
 
@@ -58,7 +43,7 @@ struct POLICY_LIST {
  */
 struct policy_object_node {
     const char *path;                  /**< The path of the policy object */
-    TPMS_POLICY_HARNESS policy;        /**< The policy object */
+    TPMS_POLICY policy;                /**< The policy object */
     struct policy_object_node *next;   /**< Pointer to next element */
 };
 
@@ -80,6 +65,7 @@ typedef TSS2_RC (*ifapi_policyexec_cbpolsel) (
 
 typedef TSS2_RC (*ifapi_policyexec_cbsign) (
     char *key_pem,
+    char *public_key_hint,
     TPMI_ALG_HASH key_pem_hash_alg,
     uint8_t *buffer,
     size_t buffer_size,
@@ -147,7 +133,7 @@ struct IFAPI_POLICY_EXEC_CTX {
     IFAPI_POLICY_EXEC_CTX *next;    /**< Pointer to next policy */
     IFAPI_POLICY_EXEC_CTX *prev;    /**< Pointer to previous policy */
     ESYS_TR session;                /**< The current policy session */
-    TPMS_POLICY_HARNESS *harness;
+    TPMS_POLICY *policy;
     ESYS_TR policySessionSav;       /**< Backup policy session */
     ESYS_TR object_handle;
     ESYS_TR nv_index;
@@ -166,7 +152,7 @@ struct IFAPI_POLICY_EXEC_CTX {
                                     /**< List of policies for authorization selection */
     ifapi_policyeval_EXEC_CB callbacks;
                                     /**< callbacks used for execution of sub
-                                         policies and actions wich require access
+                                         policies and actions which require access
                                          to the FAPI context. */
 };
 
@@ -174,7 +160,7 @@ TSS2_RC
 ifapi_policyeval_execute_prepare(
     IFAPI_POLICY_EXEC_CTX *pol_ctx,
     TPMI_ALG_HASH hash_alg,
-    TPMS_POLICY_HARNESS *harness);
+    TPMS_POLICY *policy);
 
 TSS2_RC
 ifapi_policyeval_execute(

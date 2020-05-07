@@ -22,7 +22,7 @@
 #include "util/log.h"
 #include "util/aux_util.h"
 
-TSS2_RC
+static TSS2_RC
 check_tpm_cmd(FAPI_CONTEXT *context, TPM2_CC command_code)
 {
     TSS2_RC r;
@@ -55,13 +55,18 @@ error:
     return r;
 }
 
-/** Test the FAPI NV functions.
+/** Test the FAPI PolicyCpHash but means of AuthorizeNv.
  *
  * Tested FAPI commands:
+ *  - Fapi_GetTcti()
  *  - Fapi_Provision()
+ *  - Fapi_Import()
  *  - Fapi_CreateNv()
+ *  - Fapi_WriteAuthorizeNv
  *  - Fapi_NvWrite()
- *  - Fapi_AuthorizeNv
+ *
+ * Tested Policies:
+ *  - PolicyAuthorize
  *  - PolicyCpHash
  *
  * @param[in,out] context The FAPI_CONTEXT.
@@ -77,7 +82,7 @@ test_fapi_nv_authorizenv_cphash(FAPI_CONTEXT *context)
     char *policy1_name = "/policy/pol_authorize_nv";
     char *policy1_file = TOP_SOURCEDIR "/test/data/fapi/policy/pol_authorize_nv.json";
     char *policy2_name = "/policy/pol_cphash";
-    char *policy2_file = TOP_SOURCEDIR "/test/data/fapi/policy/pol_pcr16_0.json";
+    char *policy2_file = TOP_SOURCEDIR "/test/data/fapi/policy/pol_cphash.json";
     FILE *stream = NULL;
     char json[1024];
 
@@ -118,12 +123,12 @@ test_fapi_nv_authorizenv_cphash(FAPI_CONTEXT *context)
     r = Fapi_CreateNv(context, "/nv/Owner/myNV", "", 34, "", "");
     goto_if_error(r, "Error Fapi_CreateNv", error);
 
-//TODO: Starts failing if moved after CreateNV2
-    r = Fapi_WriteAuthorizeNv(context, "/nv/Owner/myNV", policy2_name);
-    goto_if_error(r, "Error Fapi_WriteAuthorizeNv", error);
 
     r = Fapi_CreateNv(context, "/nv/Owner/myNV2", "", sizeof(data), policy1_name, "");
     goto_if_error(r, "Error Fapi_CreateNv", error);
+
+    r = Fapi_WriteAuthorizeNv(context, "/nv/Owner/myNV", policy2_name);
+    goto_if_error(r, "Error Fapi_WriteAuthorizeNv", error);
 
     r = Fapi_NvWrite(context, "/nv/Owner/myNV2", &data[0], sizeof(data));
     goto_if_error(r, "Error Fapi_NvWrite", error);

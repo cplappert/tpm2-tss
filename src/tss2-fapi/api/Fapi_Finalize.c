@@ -29,7 +29,7 @@
  * Fapi_Finalize() finalizes a context by closing IPC/RPC connections and freeing
  * its consumed memory.
  *
- * @param [in] context The FAPI_CONTEXT
+ * @param[in] context The FAPI_CONTEXT
  */
 void
 Fapi_Finalize(
@@ -37,6 +37,7 @@ Fapi_Finalize(
 {
     LOG_TRACE("called for context:%p", context);
 
+    /* Check for NULL parameters */
     if (!context || !*context) {
         LOG_WARNING("Attempting to free NULL context");
         return;
@@ -45,8 +46,10 @@ Fapi_Finalize(
     LOG_DEBUG("called: context: %p, *context: %p", context,
               (context != NULL) ? *context : NULL);
 
+    /* Finalize the profiles module. */
     ifapi_profiles_finalize(&(*context)->profiles);
 
+    /* Finalize the TCTI and ESYS contexts. */
     TSS2_TCTI_CONTEXT *tcti = NULL;
 
     if ((*context)->esys) {
@@ -58,26 +61,34 @@ Fapi_Finalize(
         }
     }
 
-    SAFE_FREE((*context)->pstore.policydir);
-    SAFE_FREE((*context)->keystore.systemdir);
-    SAFE_FREE((*context)->keystore.userdir);
-    SAFE_FREE((*context)->keystore.defaultprofile);
+    /* Finalize the keystore module. */
+    ifapi_cleanup_ifapi_keystore(&(*context)->keystore);
 
+    /* Finalize the policy module. */
+    SAFE_FREE((*context)->pstore.policydir);
+
+    /* Finalize leftovers from provisioning. */
     SAFE_FREE((*context)->cmd.Provision.root_crt);
     SAFE_FREE((*context)->cmd.Provision.intermed_crt);
     SAFE_FREE((*context)->cmd.Provision.pem_cert);
 
+    /* Finalize the config module. */
     SAFE_FREE((*context)->config.profile_dir);
     SAFE_FREE((*context)->config.user_dir);
     SAFE_FREE((*context)->config.keystore_dir);
     SAFE_FREE((*context)->config.profile_name);
     SAFE_FREE((*context)->config.tcti);
     SAFE_FREE((*context)->config.log_dir);
-    ifapi_profiles_finalize(&(*context)->profiles);
+    SAFE_FREE((*context)->config.ek_cert_file);
+    SAFE_FREE((*context)->config.intel_cert_service);
 
+    /* Finalize the eventlog module. */
     SAFE_FREE((*context)->eventlog.log_dir);
 
+    /* Finalize all remaining object of the context. */
     ifapi_free_objects(*context);
+
+    /* Free the context's memory. */
     free(*context);
     *context = NULL;
 

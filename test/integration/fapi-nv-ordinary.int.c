@@ -21,13 +21,13 @@
 #include "util/log.h"
 #include "util/aux_util.h"
 
-#define NV_SIZE 10
+#define NV_SIZE 1200
 
 #define PASSWORD "abc"
 
 static char *password;
 
-TSS2_RC
+static TSS2_RC
 auth_callback(
     FAPI_CONTEXT *context,
     char const *description,
@@ -42,7 +42,7 @@ auth_callback(
     return TSS2_RC_SUCCESS;
 }
 
-TSS2_RC
+static TSS2_RC
 action_callback(
     FAPI_CONTEXT *context,
     const char *action,
@@ -61,11 +61,18 @@ action_callback(
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
+ *  - Fapi_Import()
+ *  - Fapi_SetPolicyActionCB()
  *  - Fapi_CreateNv()
  *  - Fapi_NvWrite()
  *  - Fapi_NvRead()
+ *  - Fapi_Delete()
  *  - Fapi_SetDescription()
  *  - Fapi_GetDescription()
+ *  - Fapi_SetAuthCB()
+ *
+ * Tested Policies:
+ *  - PolicyAction
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE
@@ -76,16 +83,20 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
 {
     TSS2_RC r;
     char *nvPathOrdinary = "/nv/Owner/myNV";
-    uint8_t data_src[NV_SIZE] = { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9 };
+    uint8_t data_src[NV_SIZE];
     uint8_t *data_dest = NULL;
     size_t dest_size = NV_SIZE;
     char *description1 = "nvDescription";
     char *description2 = NULL;
-    char *policy_name = "/policy/pol_pcr16_0";
-    char *policy_file = TOP_SOURCEDIR "/test/data/fapi/policy/pol_pcr16_0.json";
+    char *policy_name = "/policy/pol_action";
+    char *policy_file = TOP_SOURCEDIR "/test/data/fapi/policy/pol_action.json";
     FILE *stream = NULL;
     char *json_policy = NULL;
     long policy_size;
+
+    for (int i = 0; i < NV_SIZE; i++) {
+        data_src[i] = (i % 10) + 1;
+    }
 
     r = Fapi_Provision(context, NULL, NULL, NULL);
     goto_if_error(r, "Error Fapi_Provision", error);
@@ -120,7 +131,7 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
     goto_if_error(r, "Error Fapi_SetPolicyActionCB", error);
 
     /* Test with policy */
-    r = Fapi_CreateNv(context, nvPathOrdinary, "noda", 10, policy_name, "");
+    r = Fapi_CreateNv(context, nvPathOrdinary, "noda", NV_SIZE, policy_name, "");
     goto_if_error(r, "Error Fapi_CreateNv", error);
 
     r = Fapi_NvWrite(context, nvPathOrdinary, &data_src[0], NV_SIZE);
@@ -129,18 +140,18 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
     r = Fapi_NvRead(context, nvPathOrdinary, &data_dest, &dest_size, NULL);
     goto_if_error(r, "Error Fapi_NvRead", error);
 
-    if (dest_size != NV_SIZE &&
-            memcmp(data_src, data_dest, dest_size) != 0) {
+    if (dest_size != NV_SIZE ||
+        memcmp(data_src, data_dest, dest_size) != 0) {
         LOG_ERROR("Error: result of nv read is wrong.");
         goto error;
     }
 
-    r = Fapi_Delete(context, nvPathOrdinary);
+     r = Fapi_Delete(context, nvPathOrdinary);
     goto_if_error(r, "Error Fapi_NV_Undefine", error);
     SAFE_FREE(data_dest);
 
     /* Empty auth noda set */
-    r = Fapi_CreateNv(context, nvPathOrdinary, "noda", 10, "", "");
+    r = Fapi_CreateNv(context, nvPathOrdinary, "noda", NV_SIZE, "", "");
     goto_if_error(r, "Error Fapi_CreateNv", error);
 
     r = Fapi_NvWrite(context, nvPathOrdinary, &data_src[0], NV_SIZE);
@@ -149,8 +160,8 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
     r = Fapi_NvRead(context, nvPathOrdinary, &data_dest, &dest_size, NULL);
     goto_if_error(r, "Error Fapi_NvRead", error);
 
-    if (dest_size != NV_SIZE &&
-            memcmp(data_src, data_dest, dest_size) != 0) {
+    if (dest_size != NV_SIZE ||
+        memcmp(data_src, data_dest, dest_size) != 0) {
         LOG_ERROR("Error: result of nv read is wrong.");
         goto error;
     }
@@ -164,7 +175,7 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
 
     /* Password set and noda set */
     password = PASSWORD;
-    r = Fapi_CreateNv(context, nvPathOrdinary, "", 10, "", password);
+    r = Fapi_CreateNv(context, nvPathOrdinary, "", NV_SIZE, "", password);
     goto_if_error(r, "Error Fapi_CreateNv", error);
 
     r = Fapi_SetAuthCB(context, auth_callback, "");
@@ -176,8 +187,8 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
     r = Fapi_NvRead(context, nvPathOrdinary, &data_dest, &dest_size, NULL);
     goto_if_error(r, "Error Fapi_NvRead", error);
 
-    if (dest_size != NV_SIZE &&
-            memcmp(data_src, data_dest, dest_size) != 0) {
+    if (dest_size != NV_SIZE ||
+        memcmp(data_src, data_dest, dest_size) != 0) {
         LOG_ERROR("Error: result of nv read is wrong.");
         goto error;
     }
@@ -188,7 +199,7 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
 
     /* Empty auth noda clear */
     password = "";
-    r = Fapi_CreateNv(context, nvPathOrdinary, "", 10, "", "");
+    r = Fapi_CreateNv(context, nvPathOrdinary, "", NV_SIZE, "", "");
     goto_if_error(r, "Error Fapi_CreateNv", error);
 
     r = Fapi_SetDescription(context, nvPathOrdinary, description1);
@@ -207,8 +218,8 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
     r = Fapi_NvRead(context, nvPathOrdinary, &data_dest, &dest_size, NULL);
     goto_if_error(r, "Error Fapi_NvRead", error);
 
-    if (dest_size != NV_SIZE &&
-            memcmp(data_src, data_dest, dest_size) != 0) {
+    if (dest_size != NV_SIZE ||
+        memcmp(data_src, data_dest, dest_size) != 0) {
         LOG_ERROR("Error: result of nv read is wrong.");
         goto error;
     }
@@ -219,7 +230,7 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
 
     /* Password set and noda clear  */
     password = PASSWORD;
-    r = Fapi_CreateNv(context, nvPathOrdinary, "", 10, "", password);
+    r = Fapi_CreateNv(context, nvPathOrdinary, "", NV_SIZE, "", password);
     goto_if_error(r, "Error Fapi_CreateNv", error);
 
     r = Fapi_SetAuthCB(context, auth_callback, "");
@@ -231,8 +242,8 @@ test_fapi_nv_ordinary(FAPI_CONTEXT *context)
     r = Fapi_NvRead(context, nvPathOrdinary, &data_dest, &dest_size, NULL);
     goto_if_error(r, "Error Fapi_NvRead", error);
 
-    if (dest_size != NV_SIZE &&
-            memcmp(data_src, data_dest, dest_size) != 0) {
+    if (dest_size != NV_SIZE ||
+        memcmp(data_src, data_dest, dest_size) != 0) {
         LOG_ERROR("Error: result of nv read is wrong.");
         goto error;
     }

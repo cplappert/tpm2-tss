@@ -26,9 +26,9 @@
  * to decide which branch of a Policy-OR policy to use to authorize a particular
  * FAPI operation.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] callback The callback function for branch selection
- * @param [in] userData A pointer that is provided to all callback invocations
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] callback The callback function for branch selection
+ * @param[in] userData A pointer that is provided to all callback invocations
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or callback is NULL.
@@ -54,6 +54,7 @@ Fapi_SetBranchCB(
     check_not_null(context);
     check_not_null(callback);
 
+    /* Store the callback and userdata pointer. */
     context->callbacks.branch = callback;
     context->callbacks.branchData = userData;
 
@@ -65,9 +66,9 @@ Fapi_SetBranchCB(
  * This function registers an application-defined function as a callback to
  * allow the TSS to get authorization values from the application.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] callback The callback function for auth value retrieval
- * @param [in] userData A pointer that is provided to all callback invocations
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] callback The callback function for auth value retrieval
+ * @param[in] userData A pointer that is provided to all callback invocations
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or callback is NULL.
@@ -93,6 +94,7 @@ Fapi_SetAuthCB(
     check_not_null(context);
     check_not_null(callback);
 
+    /* Store the callback and userdata pointer. */
     context->callbacks.auth = callback;
     context->callbacks.authData = userData;
 
@@ -104,9 +106,9 @@ Fapi_SetAuthCB(
  * Fapi_SetSignCB() registers an application-defined function as a callback to
  * allow the FAPI to get signatures authorizing use of TPM objects.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] callback The callback function for signing selection
- * @param [in] userData A pointer that is provided to all callback invocations
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] callback The callback function for signing selection
+ * @param[in] userData A pointer that is provided to all callback invocations
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or callback is NULL.
@@ -132,6 +134,7 @@ Fapi_SetSignCB(
     check_not_null(context);
     check_not_null(callback);
 
+    /* Store the callback and userdata pointer. */
     context->callbacks.sign = callback;
     context->callbacks.signData = userData;
 
@@ -144,9 +147,9 @@ Fapi_SetSignCB(
  * Fapi_SetActionCB() registers an application-defined function as a callback
  * that shall be called back upon encountering a policy action element.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] callback The callback function for branch selection
- * @param [in] userData A pointer that is provided to all callback invocations
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] callback The callback function for branch selection
+ * @param[in] userData A pointer that is provided to all callback invocations
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or callback is NULL.
@@ -172,6 +175,7 @@ Fapi_SetPolicyActionCB(
     check_not_null(context);
     check_not_null(callback);
 
+    /* Store the callback and userdata pointer. */
     context->callbacks.action = callback;
     context->callbacks.actionData = userData;
 

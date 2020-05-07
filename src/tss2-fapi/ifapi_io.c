@@ -18,7 +18,9 @@
 #include <sys/types.h>
 #include <dirent.h>
 /* Need for some libc-versions */
+#ifndef __FreeBSD__
 #include <malloc.h>
+#endif
 
 #include "tss2_common.h"
 #include "ifapi_io.h"
@@ -30,8 +32,8 @@
 
 /** Start reading a file's complete content into memory in an asynchronous way.
  *
- * @param [in, out] io The input/output context being used for file I/O.
- * @param [in] filename The name of the file to be read into memory.
+ * @param[in,out] io The input/output context being used for file I/O.
+ * @param[in] filename The name of the file to be read into memory.
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_IO_ERROR: if an I/O error was encountered; such as the file was not found.
  * @retval TSS2_FAPI_RC_MEMORY: if memory could not be allocated to hold the read data.
@@ -60,7 +62,7 @@ ifapi_io_read_async(
 
     fseek(io->stream, 0L, SEEK_END);
     long length = ftell(io->stream);
-    rewind(io->stream);
+    fclose(io->stream);
 
     io->stream = fopen(filename, "rt");
     io->char_rbuffer = malloc (length + 1);
@@ -71,8 +73,12 @@ ifapi_io_read_async(
         return TSS2_FAPI_RC_MEMORY;
     }
 
-    int flags = fcntl(fileno(io->stream), F_GETFL, 0);
-    fcntl(fileno(io->stream), F_SETFL, flags | O_NONBLOCK);
+    int rc, flags = fcntl(fileno(io->stream), F_GETFL, 0);
+    rc = fcntl(fileno(io->stream), F_SETFL, flags | O_NONBLOCK);
+    if (rc < 0) {
+        LOG_ERROR("fcntl failed with %d", errno);
+        return TSS2_FAPI_RC_IO_ERROR;
+    }
 
     io->buffer_length = length;
     io->buffer_idx = 0;
@@ -85,13 +91,13 @@ ifapi_io_read_async(
  *
  * This function needs to be called repeatedly until it does not return TSS2_FAPI_RC_TRY_AGAIN.
  *
- * @param [in, out] io The input/output context being used for file I/O.
- * @param [out] buffer The data that was read from file. (callee-allocated; use free())
- * @param [out] length The length of the data that was read from file.
+ * @param[in,out] io The input/output context being used for file I/O.
+ * @param[out] buffer The data that was read from file. (callee-allocated; use free())
+ * @param[out] length The length of the data that was read from file.
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_IO_ERROR: if an I/O error was encountered; such as the file was not found.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet complete.
-           Call this function again later.
+ *         Call this function again later.
  */
 TSS2_RC
 ifapi_io_read_finish(
@@ -109,7 +115,7 @@ ifapi_io_read_finish(
                        &io->char_rbuffer[io->buffer_idx],
                        io->buffer_length - io->buffer_idx);
     if (ret < 0 && (errno == EINTR || errno == EAGAIN))
-            return TSS2_FAPI_RC_TRY_AGAIN;
+        return TSS2_FAPI_RC_TRY_AGAIN;
 
     if (ret < 0) {
         LOG_ERROR("Error reading from file: %i.", errno);
@@ -141,8 +147,10 @@ ifapi_io_read_finish(
 
 /** Start writing a buffer into a file in an asynchronous way.
  *
- * @param [in, out] io The input/output context being used for file I/O.
- * @param [in] filename The name of the file to be read into memory.
+ * @param[in,out] io The input/output context being used for file I/O.
+ * @param[in] filename The name of the file to be read into memory.
+ * @param[in] buffer The buffer to be written.
+ * @param[in] length The number of bytes to be written.
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_IO_ERROR: if an I/O error was encountered; such as the file was not found.
  * @retval TSS2_FAPI_RC_MEMORY: if memory could not be allocated to hold the read data.
@@ -182,9 +190,12 @@ ifapi_io_write_async(
     }
 
     /* Use non blocking IO, so asynchronous write will be needed */
-    int flags = fcntl(fileno(io->stream), F_GETFL, 0);
-    fcntl(fileno(io->stream), F_SETFL, flags | O_NONBLOCK);
-
+    int rc, flags = fcntl(fileno(io->stream), F_GETFL, 0);
+    rc = fcntl(fileno(io->stream), F_SETFL, flags | O_NONBLOCK);
+    if (rc < 0) {
+        LOG_ERROR("fcntl failed with %d", errno);
+        return TSS2_FAPI_RC_IO_ERROR;
+    }
     return TSS2_RC_SUCCESS;
 }
 
@@ -192,13 +203,11 @@ ifapi_io_write_async(
  *
  * This function needs to be called repeatedly until it does not return TSS2_FAPI_RC_TRY_AGAIN.
  *
- * @param [in, out] io The input/output context being used for file I/O.
- * @param [out] buffer The data that was read from file. (callee-allocated; use free())
- * @param [out] length The length of the data that was read from file.
+ * @param[in,out] io The input/output context being used for file I/O.
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_IO_ERROR: if an I/O error was encountered; such as the file was not found.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet complete.
-           Call this function again later.
+ *         Call this function again later.
  */
 TSS2_RC
 ifapi_io_write_finish(
@@ -214,7 +223,7 @@ ifapi_io_write_finish(
                         &io->char_rbuffer[io->buffer_idx],
                         io->buffer_length - io->buffer_idx);
     if (ret < 0 && (errno == EINTR || errno == EAGAIN))
-            return TSS2_FAPI_RC_TRY_AGAIN;
+        return TSS2_FAPI_RC_TRY_AGAIN;
 
     if (ret < 0) {
         LOG_ERROR("Error writing to file: %i.", errno);
@@ -237,9 +246,9 @@ ifapi_io_write_finish(
 
 /** Check whether a file is writeable.
  *
- * @param file  The name of the fileto be checked.
+ * @param[in] file  The name of the fileto be checked.
  * @retval TSS2_RC_SUCCESS if the directories existed or were successfully created
- * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occured
+ * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occurred
  */
 TSS2_RC
 ifapi_io_check_file_writeable(
@@ -252,11 +261,14 @@ ifapi_io_check_file_writeable(
     return TSS2_RC_SUCCESS;
 }
 
-/* Check for the existence of a directory and create it if it does not yet exist.
+/** Check for the existence of a directory and create it if it does not yet exist.
  *
- * @param dirname The name of the directory to be checked / created
+ * @param[in] dirname The name of the directory to be checked / created
  * @retval TSS2_RC_SUCCESS if the directories existed or were successfully created
- * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occured
+ * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occurred
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_io_check_create_dir(
@@ -285,7 +297,7 @@ ifapi_io_check_create_dir(
 
 /** Remove a file.
  *
- * @param file The absolute path of the file to be removed.
+ * @param[in] file The absolute path of the file to be removed.
  * @retval TSS2_RC_SUCCESS If the file was successfully removed
  * @retval TSS2_FAPI_RC_IO_ERROR If the file could not be removed.
  */
@@ -301,9 +313,9 @@ ifapi_io_remove_file(const char *file)
 
 /** Remove a directory recursively; i.e. including its subdirectories.
  *
- * @param dirname The directory to be removed
+ * @param[in] dirname The directory to be removed
  * @retval TSS2_RC_SUCCESS if the directories were successfully removed
- * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occured
+ * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occurred
  * @retval TSS2_FAPI_RC_MEMORY: if memory could not be allocated to hold the read data.
  */
 TSS2_RC
@@ -333,23 +345,26 @@ ifapi_io_remove_directories(
         /* If an entry is a directory then we call ourself recursively to remove those */
         if (entry->d_type == DT_DIR) {
             r = ifapi_asprintf(&path, "%s/%s", dirname, entry->d_name);
-            return_if_error(r, "Out of memory");
+            goto_if_error(r, "Out of memory", error_cleanup);
 
             r = ifapi_io_remove_directories(path);
-            return_if_error(r, "remove directories.");
-
             free(path);
+            goto_if_error(r, "remove directories.", error_cleanup);
+
             continue;
         }
 
         /* If an entry is a file or symlink or anything else, we remove it */
         r = ifapi_asprintf(&path, "%s/%s", dirname, entry->d_name);
-        return_if_error(r, "Out of memory");
+        goto_if_error(r, "Out of memory", error_cleanup);
 
         LOG_WARNING("Found a file in directory; removing: %s", path);
 
-        if (remove(path) != 0)
-            return_error2(TSS2_FAPI_RC_IO_ERROR, "Removing file: %s", path);
+        if (remove(path) != 0) {
+            free(path);
+            closedir(dir);
+            return_error2(TSS2_FAPI_RC_IO_ERROR, "Removing file");
+        }
 
         free(path);
     }
@@ -361,18 +376,23 @@ ifapi_io_remove_directories(
 
     LOG_TRACE("SUCCESS");
     return TSS2_RC_SUCCESS;
+
+error_cleanup:
+    closedir(dir);
+    return r;
 }
 
 /** Enumerate the list of files in a directory.
  *
  * Enumerage the regular files (no directories, symlinks etc) from a given directory.
  *
- * @param dirname [in] The directory to list files from.
- * @param files [out] The list of file names.
- * @param numfiles [out] The size of files.
+ * @param[in] dirname The directory to list files from.
+ * @param[out] files The list of file names.
+ * @param[out] numfiles The size of files.
  * @retval TSS2_RC_SUCCESS if the directories were successfully removed
- * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occured
+ * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occurred
  * @retval TSS2_FAPI_RC_MEMORY: if memory could not be allocated to hold the read data.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_io_dirfiles(
@@ -390,13 +410,14 @@ ifapi_io_dirfiles(
 
     LOG_TRACE("Removing directory: %s", dirname);
 
+    paths = calloc(10, sizeof(*paths));
+    check_oom(paths);
+
     if (!(dir = opendir(dirname))) {
+        free(paths);
         return_error2(TSS2_FAPI_RC_IO_ERROR, "Could not open directory: %s",
                       dirname);
     }
-
-    paths = calloc(10, sizeof(*paths));
-    check_oom(paths);
 
     /* Iterating through the list of entries inside the directory. */
     while ((entry = readdir(dir)) != NULL) {
@@ -410,6 +431,8 @@ ifapi_io_dirfiles(
 #else /* HAVE_REALLOCARRAY */
             paths = realloc(paths, (numpaths + 10) * sizeof(*paths));
 #endif /* HAVE_REALLOCARRAY */
+            if (!paths)
+                closedir(dir);
             check_oom(paths);
         }
 
@@ -428,6 +451,7 @@ ifapi_io_dirfiles(
     return TSS2_RC_SUCCESS;
 
 error_oom:
+    closedir(dir);
     LOG_ERROR("Out of memory");
     for (size_t i = 0; i < numpaths; i++)
         free(paths[i]);
@@ -435,6 +459,16 @@ error_oom:
     return TSS2_FAPI_RC_MEMORY;
 }
 
+/** Get a linked list of files in a directory and all sub directories.
+ *
+ * Enumerage the regular files (no directories, symlinks etc) from a given directory.
+ *
+ * @param[in]  dir_name The directory to list files from.
+ * @param[out] list  The linked list with the file names.
+ * @param[out] n The number of filesl
+ * @retval TSS2_RC_SUCCESS if the directories were successfully removed
+ * @retval TSS2_FAPI_RC_MEMORY: if memory could not be allocated to hold the read data.
+ */
 static TSS2_RC
 dirfiles_all(const char *dir_name, NODE_OBJECT_T **list, size_t *n)
 {
@@ -456,24 +490,36 @@ dirfiles_all(const char *dir_name, NODE_OBJECT_T **list, size_t *n)
             if (strcmp(entry->d_name, ".") == 0 || strcmp(entry->d_name, "..") == 0)
                 continue;
             r = ifapi_asprintf(&path, "%s/%s", dir_name, entry->d_name);
+            if (r)
+                closedir(dir);
             return_if_error(r, "Out of memory");
 
             LOG_TRACE("Directory: %s", path);
             r = dirfiles_all(path, list, n);
-            return_if_error(r, "get_entities");
             SAFE_FREE(path);
+            if (r)
+                closedir(dir);
+            return_if_error(r, "get_entities");
 
         } else {
             r = ifapi_asprintf(&path, "%s/%s", dir_name, entry->d_name);
+            if (r)
+                closedir(dir);
             return_if_error(r, "Out of memory");
 
             NODE_OBJECT_T *file_obj = calloc(sizeof(NODE_OBJECT_T), 1);
-            return_if_null(file_obj, "Out of memory.", TSS2_FAPI_RC_MEMORY);
+            if (!file_obj) {
+                LOG_ERROR("Out of memory.");
+                SAFE_FREE(path);
+                closedir(dir);
+                return TSS2_FAPI_RC_MEMORY;
+            }
+
             *n += 1;
             /* Add file name to linked list */
             file_obj->object = strdup(path);
             if (file_obj->object == NULL) {
-                LOG_ERROR("%s", "Out of memory.");
+                LOG_ERROR("Out of memory.");
                 SAFE_FREE(file_obj);
                 SAFE_FREE(path);
                 closedir(dir);
@@ -497,11 +543,11 @@ dirfiles_all(const char *dir_name, NODE_OBJECT_T **list, size_t *n)
  *
  * Enumerage the regular files (no directories, symlinks etc) from a given directory.
  *
- * @param dirname [in] The directory to list files from.
- * @param files [out] The list of file names.
- * @param numfiles [out] The size of files.
+ * @param[in] searchPath The directory to list files from.
+ * @param[out] pathlist The list of file names.
+ * @param[out] numPaths The size of files.
  * @retval TSS2_RC_SUCCESS if the directories were successfully removed
- * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occured
+ * @retval TSS2_FAPI_RC_IO_ERROR if an I/O error occurred
  * @retval TSS2_FAPI_RC_MEMORY: if memory could not be allocated to hold the read data.
  */
 TSS2_RC
@@ -538,7 +584,7 @@ ifapi_io_dirfiles_all(
         }
         *pathlist = pathlist2;
     }
- cleanup:
+cleanup:
     /* Free linked list with file names */
     while (file_list) {
         head = file_list;
@@ -550,36 +596,62 @@ ifapi_io_dirfiles_all(
 
 /** Determine whether a path exists.
  *
- * @param path The absolute path of the file.
+ * @param[in] path The absolute path of the file.
  * @retval true The file exists.
- * @retval fale The file does not exist.
+ * @retval false The file does not exist.
  */
 bool
 ifapi_io_path_exists(const char *path)
 {
-     struct stat fbuffer;
+    struct stat fbuffer;
 
-     if (stat(path, &fbuffer) == 0)
-         return true;
-     else
-         return false;
+    if (stat(path, &fbuffer) == 0)
+        return true;
+    else
+        return false;
 }
 
+
+/** Wait for file I/O to be ready.
+ *
+ * If FAPI state automata are in a file I/O state it will be waited for an
+ * event on a file descriptor.
+ *
+ * @param[in] io The input/output context being used for file I/O.
+ * @retval TSS2_RC_SUCCESS After the end of the wait.
+ * @retval TSS2_FAPI_RC_IO_ERROR if the poll function returns an error.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_io_poll(IFAPI_IO * io) {
+    int rc;
     /* Check for NULL parameters */
     check_not_null(io);
 
-    if(io->pollevents) {
+    if (io->pollevents) {
         struct pollfd fds;
         fds.events = io->pollevents;
         fds.fd = fileno(io->stream);
         LOG_TRACE("Waiting for fd %i with event %i", fds.fd, fds.events);
-        poll(&fds, 1, -1);
+        rc = poll(&fds, 1, -1);
+        if (rc < 0) {
+            LOG_ERROR("Poll failed with %d", errno);
+            return TSS2_FAPI_RC_IO_ERROR;
+        }
     }
     return TSS2_RC_SUCCESS;
 }
 
+/**  Get a list of poll handles.
+ *
+ * @param[in] io The input/output context being used for file I/O.
+ * @param[out] handles The array with the poll handles.
+ * @param[out] num_handles The number of poll handles.
+ * @retval TSS2_RC_SUCCESS on success.
+ * @retval TSS2_FAPI_RC_NO_HANDLE In no poll events are stored in IO context.
+ * @retval TSS2_FAPI_RC_MEMORY If the output data cannot be allocated.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_io_poll_handles(IFAPI_IO *io, FAPI_POLL_HANDLE **handles, size_t *num_handles) {
     /* Check for NULL parameters */

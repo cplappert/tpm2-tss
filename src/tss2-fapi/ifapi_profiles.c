@@ -43,9 +43,10 @@ ifapi_profile_checkpcrs(const TPML_PCR_SELECTION *pcr_profile);
  *
  * Call ifapi_profiles_initialize_finish to complete the operation.
  *
- * @param profiles [in, out] The context for the profiles information.
- * @param profilesdir [in] The directory to load profile information from.
- * @param defaultprofile [in] The name of the default profile to use.
+ * @param[in,out] profiles The context for the profiles information.
+ * @param[in,out] io The input/output context being used for file I/O.
+ * @param[in] profilesdir The directory to load profile information from.
+ * @param[in] defaultprofile The name of the default profile to use.
  * @retval TSS2_RC_SUCCESS on success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if NULL pointers were passed in.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the profilesdir does not exist or is empty.
@@ -116,7 +117,6 @@ ifapi_profiles_initialize_async(
                   profilesdir, PROFILES_PREFIX, PROFILES_EXTENSION);
         return TSS2_FAPI_RC_BAD_VALUE;
     }
-
 #ifdef HAVE_REALLOCARRAY
     profiles->profiles = reallocarray(profiles->profiles, profiles->num_profiles,
                                       sizeof(profiles->profiles[0]));
@@ -140,7 +140,8 @@ ifapi_profiles_initialize_async(
  *
  * Call after ifapi_profiles_initialize_async to complete the operation.
  *
- * @param profiles [in, out] The context for the profiles information.
+ * @param[in,out] profiles The context for the profiles information.
+ * @param[in,out] io The input/output context being used for file I/O.
  * @retval TSS2_RC_SUCCESS on success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if NULL pointers were passed in.
  * @retval TSS2_FAPI_RC_BAD_VALUE if a profile could not be loaded.
@@ -213,14 +214,14 @@ ifapi_profiles_initialize_finish(
 
 /** Return the profile data for a given profile name.
  *
- * Returns a (const, not to be free'd) pointer to the profile data for a reqeusted profile.
+ * Returns a (const, not to be free'd) pointer to the profile data for a requested profile.
  * If a NULL profile is requesten, then the default profile is returned.
  * If a keypath is passed in, then the prefix is analysed. If that keypath starts with a profile
  * then this profile is returned. Otherwise the default profile is returned.
  *
- * @param profiles [in] The profiles context
- * @param name [in] The name of the profile or the keypath
- * @param profile [out] The pointer to the profile data.
+ * @param[in] profiles The profiles context
+ * @param[in] name The name of the profile or the keypath
+ * @param[out] profile The pointer to the profile data.
  * @retval TSS2_RC_SUCCESS on success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if NULL pointers were passed in.
  * @retval TSS2_FAPI_RC_BAD_VALUE if a profile is not found.
@@ -238,7 +239,7 @@ ifapi_profiles_get(
     size_t len;
 
     /* if no name or nor profile prefix is given, use the default profile */
-    if (!name || strncmp(name, "P_", 2) != 0|| strncmp(name, "/P_", 2) != 0) {
+    if (!name || strncmp(name, "P_", 2) != 0 || strncmp(name, "/P_", 2) != 0) {
         *profile = &profiles->default_profile;
         return TSS2_RC_SUCCESS;
     }
@@ -269,7 +270,7 @@ ifapi_profiles_get(
 
 /** Sanitizes and frees internal data structures of loaded profiles' information.
  *
- * @param profiles [in, out] The context for the profiles information.
+ * @param[in,out] profiles The context for the profiles information.
  */
 void
 ifapi_profiles_finalize(
@@ -292,13 +293,13 @@ ifapi_profiles_finalize(
         SAFE_FREE(profile->srk_template);
         SAFE_FREE(profile->ek_template);
 
-        ifapi_cleanup_policy_harness(profile->eh_policy);
+        ifapi_cleanup_policy(profile->eh_policy);
         SAFE_FREE(profile->eh_policy);
 
-        ifapi_cleanup_policy_harness(profile->ek_policy);
+        ifapi_cleanup_policy(profile->ek_policy);
         SAFE_FREE(profile->ek_policy);
 
-        ifapi_cleanup_policy_harness(profile->sh_policy);
+        ifapi_cleanup_policy(profile->sh_policy);
         SAFE_FREE(profile->sh_policy);
     }
     SAFE_FREE(profiles->profiles);
@@ -312,13 +313,16 @@ ifapi_profiles_finalize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_IO_ERROR if an error occurred while accessing the
+ *         object store.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 static TSS2_RC
 ifapi_profile_json_deserialize(
     json_object *jso,
     IFAPI_PROFILE *out)
 {
-//TODO: Cleanup
     json_object *jso2;
     TSS2_RC r;
 
@@ -333,182 +337,182 @@ ifapi_profile_json_deserialize(
 
     if (!ifapi_get_sub_object(jso, "type", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_PUBLIC_deserialize(jso2, &out->type);
+    r = ifapi_json_TPMI_ALG_PUBLIC_deserialize(jso2, &out->type);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "srk_template", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     out->srk_template = strdup(json_object_get_string(jso2));
     return_if_null(out->srk_template, "Out of memory.", TSS2_FAPI_RC_MEMORY);
 
     if (!ifapi_get_sub_object(jso, "ek_template", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     out->ek_template = strdup(json_object_get_string(jso2));
     return_if_null(out->ek_template, "Out of memory.", TSS2_FAPI_RC_MEMORY);
 
     if (!ifapi_get_sub_object(jso, "ecc_signing_scheme", &jso2)) {
-        LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        memset(&out->ecc_signing_scheme, 0, sizeof(TPMT_SIG_SCHEME));
+    } else {
+        r = ifapi_json_TPMT_SIG_SCHEME_deserialize(jso2, &out->ecc_signing_scheme);
+        return_if_error(r, "BAD VALUE");
     }
-    r =  ifapi_json_TPMT_SIG_SCHEME_deserialize(jso2, &out->ecc_signing_scheme);
-    return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "rsa_signing_scheme", &jso2)) {
-        LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        memset(&out->rsa_signing_scheme, 0, sizeof(TPMT_SIG_SCHEME));
+    } else {
+        r = ifapi_json_TPMT_SIG_SCHEME_deserialize(jso2, &out->rsa_signing_scheme);
+        return_if_error(r, "BAD VALUE");
     }
-    r =  ifapi_json_TPMT_SIG_SCHEME_deserialize(jso2, &out->rsa_signing_scheme);
-    return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "rsa_decrypt_scheme", &jso2)) {
-        LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        memset(&out->rsa_decrypt_scheme, 0, sizeof(TPMT_RSA_DECRYPT));
+    } else {
+        r = ifapi_json_TPMT_RSA_DECRYPT_deserialize(jso2, &out->rsa_decrypt_scheme);
+        return_if_error(r, "BAD VALUE");
     }
-    r =  ifapi_json_TPMT_RSA_DECRYPT_deserialize(jso2, &out->rsa_decrypt_scheme);
-    return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "sym_mode", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_SYM_MODE_deserialize(jso2, &out->sym_mode);
+    r = ifapi_json_TPMI_ALG_SYM_MODE_deserialize(jso2, &out->sym_mode);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "sym_parameters", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->sym_parameters);
+    r = ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->sym_parameters);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "sym_block_size", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT16_deserialize(jso2, &out->sym_block_size);
+    r = ifapi_json_UINT16_deserialize(jso2, &out->sym_block_size);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "pcr_selection", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPML_PCR_SELECTION_deserialize(jso2, &out->pcr_selection);
+    r = ifapi_json_TPML_PCR_SELECTION_deserialize(jso2, &out->pcr_selection);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "nameAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->nameAlg);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->nameAlg);
     return_if_error(r, "BAD VALUE");
 
     if (out->type == TPM2_ALG_RSA) {
         if (!ifapi_get_sub_object(jso, "exponent", &jso2)) {
             LOG_ERROR("Bad value");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
-        r =  ifapi_json_UINT32_deserialize(jso2, &out->exponent);
+        r = ifapi_json_UINT32_deserialize(jso2, &out->exponent);
         return_if_error(r, "BAD VALUE");
         if (!ifapi_get_sub_object(jso, "keyBits", &jso2)) {
             LOG_ERROR("Bad value");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
 
         }
-        r =  ifapi_json_TPMI_RSA_KEY_BITS_deserialize(jso2, &out->keyBits);
+        r = ifapi_json_TPMI_RSA_KEY_BITS_deserialize(jso2, &out->keyBits);
         return_if_error(r, "BAD VALUE");
 
     } else if (out->type == TPM2_ALG_ECC) {
         if (!ifapi_get_sub_object(jso, "curveID", &jso2)) {
             LOG_ERROR("Bad value");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
-        r =  ifapi_json_TPMI_ECC_CURVE_deserialize(jso2, &out->curveID);
+        r = ifapi_json_TPMI_ECC_CURVE_deserialize(jso2, &out->curveID);
         return_if_error(r, "BAD VALUE");
     }
 
     if (!ifapi_get_sub_object(jso, "session_symmetric", &jso2)) {
         out->session_symmetric = session_symmetric_default;
     } else {
-        r =  ifapi_json_TPMT_SYM_DEF_deserialize(jso2, &out->session_symmetric);
+        r = ifapi_json_TPMT_SYM_DEF_deserialize(jso2, &out->session_symmetric);
         return_if_error(r, "BAD VALUE");
     }
 
     if (ifapi_get_sub_object(jso, "eh_policy", &jso2)) {
-        out->eh_policy = calloc(1, sizeof(TPMS_POLICY_HARNESS));
+        out->eh_policy = calloc(1, sizeof(TPMS_POLICY));
         goto_if_null2(out->eh_policy, "Out of memory.", r, TSS2_FAPI_RC_MEMORY,
                       cleanup);
 
-        r =  ifapi_json_TPMS_POLICY_HARNESS_deserialize(jso2, out->eh_policy);
-        goto_if_error(r, "Deserialize policy harness.", cleanup);
+        r = ifapi_json_TPMS_POLICY_deserialize(jso2, out->eh_policy);
+        goto_if_error(r, "Deserialize policy.", cleanup);
     }
 
     if (ifapi_get_sub_object(jso, "sh_policy", &jso2)) {
-        out->sh_policy = calloc(1, sizeof(TPMS_POLICY_HARNESS));
+        out->sh_policy = calloc(1, sizeof(TPMS_POLICY));
         goto_if_null2(out->sh_policy, "Out of memory.", r, TSS2_FAPI_RC_MEMORY,
                       cleanup);
 
-        r =  ifapi_json_TPMS_POLICY_HARNESS_deserialize(jso2, out->sh_policy);
-        goto_if_error(r, "Deserialize policy harness.", cleanup);
+        r = ifapi_json_TPMS_POLICY_deserialize(jso2, out->sh_policy);
+        goto_if_error(r, "Deserialize policy.", cleanup);
     }
 
     if (ifapi_get_sub_object(jso, "ek_policy", &jso2)) {
-        out->ek_policy = calloc(1, sizeof(TPMS_POLICY_HARNESS));
+        out->ek_policy = calloc(1, sizeof(TPMS_POLICY));
         goto_if_null2(out->ek_policy, "Out of memory.", r, TSS2_FAPI_RC_MEMORY,
                       cleanup);
 
-        r =  ifapi_json_TPMS_POLICY_HARNESS_deserialize(jso2, out->ek_policy);
-        goto_if_error(r, "Deserialize policy harness.", cleanup);
+        r = ifapi_json_TPMS_POLICY_deserialize(jso2, out->ek_policy);
+        goto_if_error(r, "Deserialize policy.", cleanup);
     }
 
     if (ifapi_get_sub_object(jso, "srk_policy", &jso2)) {
-        out->srk_policy = calloc(1, sizeof(TPMS_POLICY_HARNESS));
+        out->srk_policy = calloc(1, sizeof(TPMS_POLICY));
         goto_if_null2(out->srk_policy, "Out of memory.", r, TSS2_FAPI_RC_MEMORY,
                       cleanup);
 
-        r =  ifapi_json_TPMS_POLICY_HARNESS_deserialize(jso2, out->srk_policy);
-        goto_if_error(r, "Deserialize policy harness.", cleanup);
+        r = ifapi_json_TPMS_POLICY_deserialize(jso2, out->srk_policy);
+        goto_if_error(r, "Deserialize policy.", cleanup);
     }
 
     if (ifapi_get_sub_object(jso, "lockout_policy", &jso2)) {
-        out->lockout_policy = calloc(1, sizeof(TPMS_POLICY_HARNESS));
+        out->lockout_policy = calloc(1, sizeof(TPMS_POLICY));
         goto_if_null2(out->lockout_policy, "Out of memory.", r, TSS2_FAPI_RC_MEMORY,
                       cleanup);
 
-        r =  ifapi_json_TPMS_POLICY_HARNESS_deserialize(jso2, out->lockout_policy);
-        goto_if_error(r, "Deserialize policy harness.", cleanup);
+        r = ifapi_json_TPMS_POLICY_deserialize(jso2, out->lockout_policy);
+        goto_if_error(r, "Deserialize policy.", cleanup);
     }
 
     if (!ifapi_get_sub_object(jso, "newMaxTries", &jso2)) {
         out->newMaxTries = 5;
     } else {
-        r =  ifapi_json_UINT32_deserialize(jso2, &out->newMaxTries);
+        r = ifapi_json_UINT32_deserialize(jso2, &out->newMaxTries);
         return_if_error(r, "BAD VALUE");
     }
 
     if (!ifapi_get_sub_object(jso, "newRecoveryTime", &jso2)) {
         out->newRecoveryTime = 1000;
     } else {
-        r =  ifapi_json_UINT32_deserialize(jso2, &out->newRecoveryTime);
+        r = ifapi_json_UINT32_deserialize(jso2, &out->newRecoveryTime);
         return_if_error(r, "BAD VALUE");
     }
 
     if (!ifapi_get_sub_object(jso, "lockoutRecovery", &jso2)) {
         out->lockoutRecovery = 1000;
     } else {
-        r =  ifapi_json_UINT32_deserialize(jso2, &out->lockoutRecovery);
+        r = ifapi_json_UINT32_deserialize(jso2, &out->lockoutRecovery);
         return_if_error(r, "BAD VALUE");
     }
 
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 
- cleanup:
+cleanup:
     SAFE_FREE(out->eh_policy);
     return r;
 }

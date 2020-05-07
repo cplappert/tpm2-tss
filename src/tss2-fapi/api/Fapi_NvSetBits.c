@@ -26,9 +26,9 @@
  * Sets bits in an NV index that was created as a bit field. Any number of bits
  * from 0 to 64 may be SET.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path to the NV index where bits are set
- * @param [in] bitmap The map of the bits to set
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path to the NV index where bits are set
+ * @param[in] bitmap The map of the bits to set
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or nvPath is NULL.
@@ -43,6 +43,20 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvSetBits(
@@ -92,7 +106,7 @@ Fapi_NvSetBits(
 
     return_if_error_reset_state(r, "NV_SetBits");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -103,9 +117,9 @@ Fapi_NvSetBits(
  *
  * Call Fapi_NvSetBits_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] nvPath The path to the NV index where bits are set
- * @param [in] bitmap The map of the bits to set
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] nvPath The path to the NV index where bits are set
+ * @param[in] bitmap The map of the bits to set
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or nvPath is NULL.
@@ -120,6 +134,13 @@ Fapi_NvSetBits(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 Fapi_NvSetBits_Async(
@@ -140,6 +161,7 @@ Fapi_NvSetBits_Async(
     /* Helpful alias pointers */
     IFAPI_NV_Cmds * command = &context->nv_cmd;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize NV_SetBits");
 
@@ -150,13 +172,17 @@ Fapi_NvSetBits_Async(
     command->bitmap = bitmap;
     command->rdata = NULL;
 
+    /* Load the NV index metadata from keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, command->nvPath);
     goto_if_error2(r, "Could not open: %s", error_cleanup, command->nvPath);
 
+    /* Initialize the context state for this operation. */
     context->state = NV_SET_BITS_READ;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->nvPath);
     return r;
 }
@@ -165,7 +191,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_NvSetBIts_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -177,6 +203,19 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_NvSetBits_Finish(
@@ -195,7 +234,7 @@ Fapi_NvSetBits_Finish(
     /* Helpful alias pointers */
     IFAPI_NV_Cmds * command = &context->nv_cmd;
     IFAPI_OBJECT *object = &command->nv_object;
-    ESYS_TR nvIndex =  command->esys_handle;
+    ESYS_TR nvIndex = command->esys_handle;
     IFAPI_OBJECT *authObject = &command->auth_object;
 
     switch (context->state) {
@@ -212,10 +251,11 @@ Fapi_NvSetBits_Finish(
             goto_error(r, TSS2_FAPI_RC_BAD_PATH, "%s is no NV object.", error_cleanup,
                        command->nvPath);
 
+        /* Initialize the NV index object for use with ESYS. */
         r = ifapi_initialize_object(context->esys, object);
         goto_if_error_reset_state(r, "Initialize NV object", error_cleanup);
 
-        nvIndex =  command->nv_object.handle;
+        nvIndex = command->nv_object.handle;
         command->esys_handle = object->handle;
         command->nv_obj = object->misc.nv;
 
@@ -235,30 +275,30 @@ Fapi_NvSetBits_Finish(
         command->auth_index = authIndex;
         context->primary_state = PRIMARY_INIT;
 
-        /* Prepare Session */
+        /* Prepare session for authorization */
         r = ifapi_get_sessions_async(context,
                                      IFAPI_SESSION_GENEK | IFAPI_SESSION1,
                                      0, 0);
         goto_if_error_reset_state(r, "Create sessions", error_cleanup);
 
-        context->state = NV_SET_BITS_WAIT_FOR_SESSION;
         fallthrough;
 
     statecase(context->state, NV_SET_BITS_WAIT_FOR_SESSION)
-//TODO: Pass the namealg of the NV index into the session to be created
-        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile);
+        r = ifapi_get_sessions_finish(context, &context->profiles.default_profile,
+                                      object->misc.nv.public.nvPublic.nameAlg);
         return_try_again(r);
 
         goto_if_error_reset_state(r, " FAPI create session", error_cleanup);
 
-        context->state = NV_SET_BITS_AUTHORIZE;
         fallthrough;
 
     statecase(context->state, NV_SET_BITS_AUTHORIZE)
+        /* Authorize the session to be used for accessing the NV index. */
         r = ifapi_authorize_object(context, authObject, &auth_session);
         return_try_again(r);
         goto_if_error(r, "Authorize NV object.", error_cleanup);
 
+        /* Call the SetBit TPM operation. */
         r = Esys_NV_SetBits_Async(context->esys,  command->auth_index, nvIndex,
                                   auth_session,
                                   ESYS_TR_NONE, ESYS_TR_NONE,
@@ -266,18 +306,14 @@ Fapi_NvSetBits_Finish(
 
         goto_if_error_reset_state(r, " Fapi_NvSetBits_Async", error_cleanup);
 
-        context->state = NV_SET_BITS_AUTH_SENT;
         fallthrough;
 
     statecase(context->state, NV_SET_BITS_AUTH_SENT)
         r = Esys_NV_SetBits_Finish(context->esys);
-
         return_try_again(r);
-
         goto_if_error_reset_state(r, "FAPI NV_SetBits_Finish", error_cleanup);
 
-        context->state = NV_SET_BITS_WRITE;
-
+        /* Serialize the ESYS object for updating the metadata in the keystore. */
         r = ifapi_esys_serialize_object(context->esys, object);
         goto_if_error(r, "Prepare serialization", error_cleanup);
 
@@ -294,15 +330,16 @@ Fapi_NvSetBits_Finish(
         r = ifapi_keystore_store_finish(&context->keystore, &context->io);
         return_try_again(r);
         return_if_error_reset_state(r, "write_finish failed");
+
         fallthrough;
 
     statecase(context->state, NV_SET_BITS_CLEANUP)
+        /* Cleanup the session used for authorization. */
         r = ifapi_cleanup_session(context);
         try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
-        context->state =  _FAPI_STATE_INIT;
+        context->state = _FAPI_STATE_INIT;
         LOG_DEBUG("success");
-        r =  TSS2_RC_SUCCESS;
 
         break;
 
@@ -310,6 +347,7 @@ Fapi_NvSetBits_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     SAFE_FREE(command->nvPath);
     SAFE_FREE(jso);
     ifapi_session_clean(context);
@@ -317,6 +355,6 @@ error_cleanup:
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

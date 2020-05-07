@@ -17,6 +17,14 @@
 #include "util/log.h"
 #include "util/aux_util.h"
 
+
+/** Serialize a character string to json.
+ *
+ * @param[in]in the character string.
+ * @param[out] out the json object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
+ */
 static TSS2_RC
 ifapi_json_char_serialize(
     const char *in,
@@ -61,7 +69,7 @@ static TPMI_POLICYTYPE_ASSIGN serialize_TPMI_POLICYTYPE_tab[] = {
 /** Get json object for a constant, if a variable is actually of type TPMI_POLICYTYPE.
  *
  * @param[in] in binary value of constant.
- * @param[out] jso object with text representing the constant.
+ * @param[out] str_jso with text representing the constant.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the constant is not of type TPMI_POLICYTYPE.
@@ -107,6 +115,7 @@ ifapi_json_TPMI_POLICYTYPE_serialize(const TPMI_POLICYTYPE in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYSIGNED.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYSIGNED_serialize(const TPMS_POLICYSIGNED *in,
@@ -159,6 +168,13 @@ ifapi_json_TPMS_POLICYSIGNED_serialize(const TPMS_POLICYSIGNED *in,
 
         json_object_object_add(*jso, "keyPEM", jso2);
     }
+    if ((in->publicKeyHint) && strcmp(in->publicKeyHint, "") != 0) {
+        jso2 = NULL;
+        r = ifapi_json_char_serialize(in->publicKeyHint, &jso2);
+        return_if_error(r, "Serialize char");
+
+        json_object_object_add(*jso, "publicKeyHint", jso2);
+    }
     if (in->keyPEMhashAlg != 0) {
         jso2 = NULL;
         r = ifapi_json_TPMI_ALG_HASH_serialize(in->keyPEMhashAlg, &jso2);
@@ -168,7 +184,7 @@ ifapi_json_TPMS_POLICYSIGNED_serialize(const TPMS_POLICYSIGNED *in,
     }
     /* Check whether only one conditional is used. */
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional is allowed for policy signed.");
     }
     return TSS2_RC_SUCCESS;
@@ -181,6 +197,7 @@ ifapi_json_TPMS_POLICYSIGNED_serialize(const TPMS_POLICYSIGNED *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYSECRET.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYSECRET_serialize(const TPMS_POLICYSECRET *in,
@@ -233,7 +250,7 @@ ifapi_json_TPMS_POLICYSECRET_serialize(const TPMS_POLICYSECRET *in,
         json_object_object_add(*jso, "objectName", jso2);
     }
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional needed for policy secret .");
     }
     return TSS2_RC_SUCCESS;
@@ -246,6 +263,7 @@ ifapi_json_TPMS_POLICYSECRET_serialize(const TPMS_POLICYSECRET *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYLOCALITY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYLOCALITY_serialize(const TPMS_POLICYLOCALITY *in,
@@ -273,6 +291,7 @@ ifapi_json_TPMS_POLICYLOCALITY_serialize(const TPMS_POLICYLOCALITY *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYNV.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYNV_serialize(const TPMS_POLICYNV *in, json_object **jso)
@@ -331,7 +350,7 @@ ifapi_json_TPMS_POLICYNV_serialize(const TPMS_POLICYNV *in, json_object **jso)
     }
     /* Check whether only one conditional is used. */
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional is allowed for policy NV.");
     }
 
@@ -345,6 +364,7 @@ ifapi_json_TPMS_POLICYNV_serialize(const TPMS_POLICYNV *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYCOUNTERTIMER.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYCOUNTERTIMER_serialize(const TPMS_POLICYCOUNTERTIMER *in,
@@ -384,6 +404,7 @@ ifapi_json_TPMS_POLICYCOUNTERTIMER_serialize(const TPMS_POLICYCOUNTERTIMER *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYCOMMANDCODE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYCOMMANDCODE_serialize(const TPMS_POLICYCOMMANDCODE *in,
@@ -411,6 +432,7 @@ ifapi_json_TPMS_POLICYCOMMANDCODE_serialize(const TPMS_POLICYCOMMANDCODE *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYPHYSICALPRESENCE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYPHYSICALPRESENCE_serialize(const
@@ -430,6 +452,7 @@ ifapi_json_TPMS_POLICYPHYSICALPRESENCE_serialize(const
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYCPHASH.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYCPHASH_serialize(const TPMS_POLICYCPHASH *in,
@@ -457,6 +480,7 @@ ifapi_json_TPMS_POLICYCPHASH_serialize(const TPMS_POLICYCPHASH *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYNAMEHASH.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYNAMEHASH_serialize(const TPMS_POLICYNAMEHASH *in,
@@ -513,7 +537,7 @@ ifapi_json_TPMS_POLICYNAMEHASH_serialize(const TPMS_POLICYNAMEHASH *in,
     }
     /* Check whether only one condition field found in policy. */
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional is allowed for policy name hash.");
     }
 
@@ -527,6 +551,7 @@ ifapi_json_TPMS_POLICYNAMEHASH_serialize(const TPMS_POLICYNAMEHASH *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYDUPLICATIONSELECT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYDUPLICATIONSELECT_serialize(const
@@ -579,7 +604,7 @@ ifapi_json_TPMS_POLICYDUPLICATIONSELECT_serialize(const
 
     /* Check whether only one condition field found in policy. */
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional is allowed for policy "
                      "duplication select.");
     }
@@ -593,6 +618,7 @@ ifapi_json_TPMS_POLICYDUPLICATIONSELECT_serialize(const
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYAUTHORIZE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYAUTHORIZE_serialize(const TPMS_POLICYAUTHORIZE *in,
@@ -671,6 +697,7 @@ ifapi_json_TPMS_POLICYAUTHORIZE_serialize(const TPMS_POLICYAUTHORIZE *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYAUTHVALUE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYAUTHVALUE_serialize(const TPMS_POLICYAUTHVALUE *in,
@@ -690,6 +717,7 @@ ifapi_json_TPMS_POLICYAUTHVALUE_serialize(const TPMS_POLICYAUTHVALUE *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYPASSWORD.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYPASSWORD_serialize(const TPMS_POLICYPASSWORD *in,
@@ -709,6 +737,7 @@ ifapi_json_TPMS_POLICYPASSWORD_serialize(const TPMS_POLICYPASSWORD *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYNVWRITTEN.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYNVWRITTEN_serialize(const TPMS_POLICYNVWRITTEN *in,
@@ -736,6 +765,7 @@ ifapi_json_TPMS_POLICYNVWRITTEN_serialize(const TPMS_POLICYNVWRITTEN *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYTEMPLATE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYTEMPLATE_serialize(const TPMS_POLICYTEMPLATE *in,
@@ -776,7 +806,7 @@ ifapi_json_TPMS_POLICYTEMPLATE_serialize(const TPMS_POLICYTEMPLATE *in,
 
     /* Check whether only one condition field found in policy. */
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional is allowed for policy template.");
     }
     return TSS2_RC_SUCCESS;
@@ -789,6 +819,7 @@ ifapi_json_TPMS_POLICYTEMPLATE_serialize(const TPMS_POLICYTEMPLATE *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYAUTHORIZENV.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYAUTHORIZENV_serialize(const TPMS_POLICYAUTHORIZENV *in,
@@ -820,7 +851,7 @@ ifapi_json_TPMS_POLICYAUTHORIZENV_serialize(const TPMS_POLICYAUTHORIZENV *in,
         json_object_object_add(*jso, "nvPublic", jso2);
     }
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional needed for policy authorize nv .");
     }
     return TSS2_RC_SUCCESS;
@@ -833,6 +864,7 @@ ifapi_json_TPMS_POLICYAUTHORIZENV_serialize(const TPMS_POLICYAUTHORIZENV *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYACTION.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYACTION_serialize(const TPMS_POLICYACTION *in,
@@ -860,6 +892,7 @@ ifapi_json_TPMS_POLICYACTION_serialize(const TPMS_POLICYACTION *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_PCRVALUE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_PCRVALUE_serialize(const TPMS_PCRVALUE *in, json_object **jso)
@@ -896,6 +929,7 @@ ifapi_json_TPMS_PCRVALUE_serialize(const TPMS_PCRVALUE *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_PCRVALUES.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_PCRVALUES_serialize(const TPML_PCRVALUES *in, json_object **jso)
@@ -925,6 +959,7 @@ ifapi_json_TPML_PCRVALUES_serialize(const TPML_PCRVALUES *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYPCR.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYPCR_serialize(const TPMS_POLICYPCR *in, json_object **jso)
@@ -965,7 +1000,7 @@ ifapi_json_TPMS_POLICYPCR_serialize(const TPMS_POLICYPCR *in, json_object **jso)
     }
     /* Check whether only one conditional is used. */
     if (cond_cnt != 1) {
-        return_error(TSS2_FAPI_RC_BAD_TEMPLATE,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "Exactly one conditional is allowed for policy pcr.");
     }
     return TSS2_RC_SUCCESS;
@@ -978,10 +1013,12 @@ ifapi_json_TPMS_POLICYPCR_serialize(const TPMS_POLICYPCR *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYAUTHORIZATION.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
-ifapi_json_TPMS_POLICYAUTHORIZATION_serialize(const TPMS_POLICYAUTHORIZATION
-        *in, json_object **jso)
+ifapi_json_TPMS_POLICYAUTHORIZATION_serialize(
+    const TPMS_POLICYAUTHORIZATION *in,
+    json_object **jso)
 {
     return_if_null(in, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
@@ -1020,6 +1057,7 @@ ifapi_json_TPMS_POLICYAUTHORIZATION_serialize(const TPMS_POLICYAUTHORIZATION
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_POLICYAUTHORIZATIONS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_POLICYAUTHORIZATIONS_serialize(const TPML_POLICYAUTHORIZATIONS
@@ -1053,6 +1091,7 @@ ifapi_json_TPML_POLICYAUTHORIZATIONS_serialize(const TPML_POLICYAUTHORIZATIONS
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYBRANCH.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYBRANCH_serialize(const TPMS_POLICYBRANCH *in,
@@ -1097,6 +1136,7 @@ ifapi_json_TPMS_POLICYBRANCH_serialize(const TPMS_POLICYBRANCH *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_POLICYBRANCHES.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_POLICYBRANCHES_serialize(const TPML_POLICYBRANCHES *in,
@@ -1129,6 +1169,7 @@ ifapi_json_TPML_POLICYBRANCHES_serialize(const TPML_POLICYBRANCHES *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICYOR.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_POLICYOR_serialize(const TPMS_POLICYOR *in, json_object **jso)
@@ -1152,10 +1193,12 @@ ifapi_json_TPMS_POLICYOR_serialize(const TPMS_POLICYOR *in, json_object **jso)
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the policy element.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_POLICYELEMENT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_POLICYELEMENT_serialize(const TPMU_POLICYELEMENT *in,
@@ -1221,6 +1264,7 @@ ifapi_json_TPMU_POLICYELEMENT_serialize(const TPMU_POLICYELEMENT *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_POLICYELEMENT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_POLICYELEMENT_serialize(const TPMT_POLICYELEMENT *in,
@@ -1259,6 +1303,7 @@ ifapi_json_TPMT_POLICYELEMENT_serialize(const TPMT_POLICYELEMENT *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_POLICYELEMENTS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_POLICYELEMENTS_serialize(const TPML_POLICYELEMENTS *in,
@@ -1284,16 +1329,17 @@ ifapi_json_TPML_POLICYELEMENTS_serialize(const TPML_POLICYELEMENTS *in,
     return TSS2_RC_SUCCESS;
 }
 
-/** Serialize value of type TPMS_POLICY_HARNESS to json.
+/** Serialize value of type TPMS_POLICY to json.
  *
  * @param[in] in value to be serialized.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
- * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICY_HARNESS.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
-ifapi_json_TPMS_POLICY_HARNESS_serialize(const TPMS_POLICY_HARNESS *in,
+ifapi_json_TPMS_POLICY_serialize(const TPMS_POLICY *in,
         json_object **jso)
 {
     return_if_null(in, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);

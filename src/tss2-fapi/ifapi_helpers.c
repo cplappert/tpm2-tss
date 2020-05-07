@@ -18,6 +18,7 @@
 #include <unistd.h>
 #include <ctype.h>
 #include <dirent.h>
+#include <curl/curl.h>
 
 #include "tss2_mu.h"
 #include "fapi_util.h"
@@ -33,12 +34,16 @@
 
 /** Create template for key creation based on type flags.
  *
+ * Based on passed flags the TPM2B_PUBLIC data which is used for key
+ * creation will be adapted.
+ *
  * @param[in] type The flags describing the key type.
  * @param[in] policy The flag whether a policy is used.
  * @param[out] template The template including the TPM2B_PUBLIC which will
  *             be used for key creation.
  * @retval TSS2_RC_SUCCESS if the template can be generated.
  * @retval TSS2_FAPI_RC_BAD_VALUE If an invalid combination of flags was used.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_set_key_flags(const char *type, bool policy, IFAPI_KEY_TEMPLATE *template)
@@ -123,6 +128,16 @@ error:
 }
 
 /** Create template for nv object  creation based on type flags.
+ *
+ * Based on passed flags the TPM2B_NV_PUBLIC data which is used for key
+ * creation will be adapted.
+ * @param[in] type The flags describing the nv object type.
+ * @param[in] policy The flag whether a policy is used.
+ * @param[out] template The template including the TPM2B_NV_PUBLIC which will
+ *             be used for nv object creation.
+ * @retval TSS2_RC_SUCCESS if the template can be generated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE If an invalid combination of flags was used.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_set_nv_flags(const char *type, IFAPI_NV_TEMPLATE *template,
@@ -149,13 +164,13 @@ ifapi_set_nv_flags(const char *type, IFAPI_NV_TEMPLATE *template,
         if (strcasecmp(flag, "system") == 0) {
             template->system = TPM2_YES;
         } else if (strcasecmp(flag, "bitfield") == 0) {
-            attributes |=  TPM2_NT_BITS << TPMA_NV_TPM2_NT_SHIFT;
+            attributes |= TPM2_NT_BITS << TPMA_NV_TPM2_NT_SHIFT;
             type_count += 1;
         } else if (strcasecmp(flag, "counter") == 0) {
-            attributes |=  TPM2_NT_COUNTER << TPMA_NV_TPM2_NT_SHIFT;
+            attributes |= TPM2_NT_COUNTER << TPMA_NV_TPM2_NT_SHIFT;
             type_count += 1;
         } else if (strcasecmp(flag, "pcr") == 0) {
-            attributes |=  TPM2_NT_EXTEND << TPMA_NV_TPM2_NT_SHIFT;
+            attributes |= TPM2_NT_EXTEND << TPMA_NV_TPM2_NT_SHIFT;
             type_count += 1;
         } else if (strcasecmp(flag, "noda") == 0) {
             attributes |= TPMA_NV_NO_DA;
@@ -178,7 +193,7 @@ ifapi_set_nv_flags(const char *type, IFAPI_NV_TEMPLATE *template,
     }
     if (type_count == 0) {
         /* Normal NV space will be defined */
-        attributes |=  TPM2_NT_ORDINARY << TPMA_NV_TPM2_NT_SHIFT;
+        attributes |= TPM2_NT_ORDINARY << TPMA_NV_TPM2_NT_SHIFT;
         if (size == 0)
             size = 64;
     }
@@ -208,9 +223,13 @@ error:
     return r;
 }
 
-/**
- * Determine whether path describes a NV object
- * @param[in] path:
+/**  Determine whether path is of certain type.
+ *
+ * @param[in] path The path to be checked.
+ * @param[in] type sub-string at the beginning of the path to be checked.
+ *
+ * @retval true if the path name starts with type.
+ * @retval false if not.
  */
 bool
 ifapi_path_type_p(const char *path, const char *type)
@@ -226,8 +245,11 @@ ifapi_path_type_p(const char *path, const char *type)
 
     end = strchr(&path[pos], IFAPI_FILE_DELIM_CHAR);
     if (!end)
+        /* No meaningful path */
         return false;
     end_pos = (int)(end - path);
+
+    /* Check sub-string and following delimiter. */
     if (strlen(path) - pos > 3 &&
             strncasecmp(type, &path[pos], strlen(type)) == 0 && end &&
             strncmp(IFAPI_FILE_DELIM, &path[end_pos], 1) == 0)
@@ -235,9 +257,12 @@ ifapi_path_type_p(const char *path, const char *type)
     return false;
 }
 
-/**
- * Get ESYS handle for a hierarchy.
- * @param[in] path:
+/** Get ESYS handle for a hierarchy path.
+ *
+ * @param[in] path The path to be checked.
+ *
+ * @retval The ESAPI handle for the hierarchy defined in path.
+ * @retval 0 if not handle can be assigned.
  */
 ESYS_TR
 ifapi_get_hierary_handle(const char *path)
@@ -258,9 +283,15 @@ ifapi_get_hierary_handle(const char *path)
     return 0;
 }
 
-/**
- * Determine whether path describes a hierarchy object
- * @param[in] path:
+/** Determine whether path describes a hierarchy object.
+ *
+ * It will be checked whether the path describes a hierarch. A key path
+ * with a hierarchy will not deliver true.
+ *
+ * @param[in] path The path to be checked.
+ *
+ * @retval true if the path describes a hierarchy.
+ * @retval false if not.
  */
 bool
 ifapi_hierarchy_path_p(const char *path)
@@ -302,10 +333,13 @@ ifapi_hierarchy_path_p(const char *path)
     return false;
 }
 
-/**
- * Compare two variables of type TPM2B_ECC_PARAMETER.
- * @param[in] in1 variable to be compared with:
- * @param[in] in2
+/** Compare two variables of type TPM2B_ECC_PARAMETER.
+ *
+ * @param[in] in1 variable to be compared with in2.
+ * @param[in] in2 variable to be compared with in1.
+ *
+ * @retval true if the variables are equal.
+ * @retval false if not.
  */
 bool
 ifapi_TPM2B_ECC_PARAMETER_cmp(TPM2B_ECC_PARAMETER *in1,
@@ -318,10 +352,13 @@ ifapi_TPM2B_ECC_PARAMETER_cmp(TPM2B_ECC_PARAMETER *in1,
     return memcmp(&in1->buffer[0], &in2->buffer[0], in1->size) == 0;
 }
 
-/**
- * Compare two variables of type TPMS_ECC_POINT.
- * @param[in] in1 variable to be compared with:
- * @param[in] in2
+/** Compare two variables of type TPMS_ECC_POINT.
+ *
+ * @param[in] in1 variable to be compared with in2.
+ * @param[in] in2 variable to be compared with in1.
+ *
+ * @retval true if the variables are equal.
+ * @retval false if not.
  */
 bool
 ifapi_TPMS_ECC_POINT_cmp(TPMS_ECC_POINT *in1, TPMS_ECC_POINT *in2)
@@ -339,8 +376,11 @@ ifapi_TPMS_ECC_POINT_cmp(TPMS_ECC_POINT *in1, TPMS_ECC_POINT *in2)
 
 /**  Compare two variables of type TPM2B_DIGEST.
  *
- * @param[in] in1 variable to be compared with:
- * @param[in] in2
+ * @param[in] in1 variable to be compared with in2.
+ * @param[in] in2 variable to be compared with in1.
+ *
+ * @retval true if the variables are equal.
+ * @retval false if not.
  */
 bool
 ifapi_TPM2B_DIGEST_cmp(TPM2B_DIGEST *in1, TPM2B_DIGEST *in2)
@@ -354,8 +394,11 @@ ifapi_TPM2B_DIGEST_cmp(TPM2B_DIGEST *in1, TPM2B_DIGEST *in2)
 
 /** Compare two variables of type TPM2B_PUBLIC_KEY_RSA.
  *
- * @param[in] in1 variable to be compared with:
- * @param[in] in2
+ * @param[in] in1 variable to be compared with in2
+ * @param[in] in2 variable to be compared with in1
+ *
+ * @retval true if the variables are equal.
+ * @retval false if not.
  */
 bool
 ifapi_TPM2B_PUBLIC_KEY_RSA_cmp(TPM2B_PUBLIC_KEY_RSA *in1,
@@ -370,11 +413,13 @@ ifapi_TPM2B_PUBLIC_KEY_RSA_cmp(TPM2B_PUBLIC_KEY_RSA *in1,
 
 /**  Compare two variables of type TPMU_PUBLIC_ID.
  *
- * @param[in] in1 variable to be compared.
- * @parma[in] selector1 key type of first key.
- * @param[in] in2  variable to be compared.
+ * @param[in] in1 variable to be compared with in2.
+ * @param[in] selector1 key type of first key.
+ * @param[in] in2 variable to be compared with in1.
  * @param[in] selector2 key type of second key.
- * @result true if variables are equal
+ *
+ * @result true if variables are equal.
+ * @result false if not.
  */
 bool
 ifapi_TPMU_PUBLIC_ID_cmp(TPMU_PUBLIC_ID *in1, UINT32 selector1,
@@ -409,8 +454,11 @@ ifapi_TPMU_PUBLIC_ID_cmp(TPMU_PUBLIC_ID *in1, UINT32 selector1,
 
 /**
  * Compare the PUBLIC_ID stored in two  TPMT_PUBLIC structures.
- * @param[in] in1 variable to be compared with:
+ * @param[in] in1 the public data with the unique data to be compared with:
  * @param[in] in2
+ *
+ * @retval true if the variables are equal.
+ * @retval false if not.
  */
 bool
 ifapi_TPMT_PUBLIC_cmp(TPMT_PUBLIC *in1, TPMT_PUBLIC *in2)
@@ -422,6 +470,18 @@ ifapi_TPMT_PUBLIC_cmp(TPMT_PUBLIC *in1, TPMT_PUBLIC *in2)
     return true;
 }
 
+/** Print to allocated string.
+ *
+ * A list of parameters will be printed to an allocated string according to the
+ * format description in the first parameter.
+ *
+ * @param[out] str The allocated output string.
+ * @param[in] fmt The format string (printf formats can be used.)
+ * @param[in] args The list of objects to be printed.
+ *
+ * @retval int The size of the string ff the printing was successful.
+ * @retval -1 if not enough memory can be allocated.
+ */
 int
 vasprintf(char **str, const char *fmt, va_list args)
 {
@@ -442,6 +502,18 @@ vasprintf(char **str, const char *fmt, va_list args)
     return size;
 }
 
+/** Print to allocated string.
+ *
+ * A list of parameters will be printed to an allocated string according to the
+ * format description in the first parameter.
+ *
+ * @param[out] str The allocated output string.
+ * @param[in] fmt The format string (printf formats can be used.)
+ * @param[in] ... The list of objects to be printed.
+ *
+ * @retval TSS2_RC_SUCCESS If the printing was successful.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
 TSS2_RC
 ifapi_asprintf(char **str, const char *fmt, ...)
 {
@@ -459,7 +531,9 @@ ifapi_asprintf(char **str, const char *fmt, ...)
  *
  * @param[in] string the string to split.
  * @param[in] delimiter the delimiter.
+ *
  * @retval The linked list of substrings.
+ * @retval NULL if the list cannot be created.
  */
 NODE_STR_T *
 split_string(const char *string, char *delimiter)
@@ -477,7 +551,7 @@ split_string(const char *string, char *delimiter)
         LOG_ERROR("%s", "Out of memory.");
         goto error_cleanup;
     }
-    char * stringdup_tokenized = strtok_r(stringdup, delimiter, &strtok_save);
+    char *stringdup_tokenized = strtok_r(stringdup, delimiter, &strtok_save);
     if (stringdup_tokenized != NULL) {
         substr = strdup(stringdup_tokenized);
     } else {
@@ -490,7 +564,7 @@ split_string(const char *string, char *delimiter)
     do {
         if (node == NULL) {
             node = malloc(sizeof(NODE_STR_T));
-            if(node == NULL) {
+            if (node == NULL) {
                 LOG_ERROR("%s", "Out of memory.");
                 goto error_cleanup;
             }
@@ -499,7 +573,7 @@ split_string(const char *string, char *delimiter)
             start_node = node;
         } else {
             node->next = malloc(sizeof(NODE_STR_T));
-            if(node->next == NULL) {
+            if (node->next == NULL) {
                 LOG_ERROR("%s", "Out of memory.");
                 goto error_cleanup;
             }
@@ -582,10 +656,10 @@ ifapi_free_node_list(NODE_OBJECT_T *node)
     }
 }
 
-
 /** Compute the number on nodes in a linked list.
  *
  * @param[in] node the first node of the linked list.
+ *
  * @retval the number on nodes.
  */
 size_t
@@ -605,9 +679,10 @@ ifapi_path_length(NODE_STR_T *node)
  *
  * @param[in] node the first node of the linked string list.
  * @param[in] delim_length the size of the delimiter used for the concatenation.
+ *
  * @retval the size of the string.
  */
-size_t
+static size_t
 path_str_length(NODE_STR_T *node, int delim_length)
 {
     size_t size = 0;
@@ -624,9 +699,11 @@ path_str_length(NODE_STR_T *node, int delim_length)
 
 /** Compute a pathname based on a linked list of strings.
  *
- * @param[out] dest the pointer to the pathname (callee allocated).
- * @param[in]  supdir a sup directory will be the prefix of the pathname.
- * @param[in]  delim  the delimiter which will be used for concatenation.
+ * @param[out] dest The pointer to the generated pathname (callee allocated).
+ * @param[in]  supdir A sup directory will be the prefix of the pathname.
+ * @param[in]  node The linked list.
+ * @param[in]  name A name which is appended to the result if not NULL.
+ *
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY if the memory for the pathname can't be allocated.
  */
@@ -639,7 +716,7 @@ ifapi_path_string(char **dest, const char *supdir, NODE_STR_T *node, char *name)
     *dest = malloc(length);
     if (*dest == NULL) {
         LOG_ERROR("Out of memory");
-        return  TSS2_FAPI_RC_MEMORY;
+        return TSS2_FAPI_RC_MEMORY;
     }
     *dest[0] = '\0';
     if (supdir != NULL) {
@@ -665,8 +742,8 @@ ifapi_path_string(char **dest, const char *supdir, NODE_STR_T *node, char *name)
  * @param[out] dest the pointer to the pathname (callee allocated).
  * @param[in]  supdir a sup directory will be the prefix of the pathname.
  *                    (can be NULL).
+ * @param[in]  node the linked list.
  * @param[in]  name  the filename (can be NULL).
- * @param[in]  delim  the delimiter which will be used for concatenation.
  * @param[in]  n the number of the first elements which will bes used for concatenation.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY if the memory for the pathname can't be allocated.
@@ -682,7 +759,7 @@ ifapi_path_string_n(char **dest, const char *supdir, NODE_STR_T *node, char *nam
     size_t i;
     if (*dest == NULL) {
         LOG_ERROR("Out of memory");
-        return  TSS2_FAPI_RC_MEMORY;
+        return TSS2_FAPI_RC_MEMORY;
     }
     *dest[0] = '\0';
     if (supdir != NULL) {
@@ -702,6 +779,17 @@ ifapi_path_string_n(char **dest, const char *supdir, NODE_STR_T *node, char *nam
     return TSS2_RC_SUCCESS;
 }
 
+/** Initialize a linked list of strings.
+ *
+ * free string in the list object will be set to true.
+ * If the list will be extended by sub-string which are part
+ * of this strin free_string has to be set to false.
+ *
+ * @param[in] string The string for the first element.
+ *
+ * @retval the initial node of the linked list.
+ * @retval NULL if the list cannot be created.
+ */
 NODE_STR_T *
 init_string_list(const char *string)
 {
@@ -719,6 +807,16 @@ init_string_list(const char *string)
     return result;
 }
 
+/** Add string to the last element of a linked list of strings.
+ *
+ * A duplicate of the passed string will be added.
+ *
+ * @param[in,out] str_list The linked list.
+ * @param[in] string The string to be added.
+ *
+ * @retval true if the string was added to the list.
+ * @retval false if the list could not be extended.
+ */
 bool
 add_string_to_list(NODE_STR_T *str_list, char *string)
 {
@@ -737,6 +835,15 @@ add_string_to_list(NODE_STR_T *str_list, char *string)
     return true;
 }
 
+/** Add a object as first element to a linked list.
+ *
+ * @param[in] object The object to be added.
+ * @param[in,out] object_list The linked list to be extended.
+ *
+ * @retval TSS2_RC_SUCCESS if the object was added.
+ * @retval TSS2_FAPI_RC_MEMORY If memory for the list extension cannot
+ *         be allocated.
+ */
 TSS2_RC
 push_object_to_list(void *object, NODE_OBJECT_T **object_list)
 {
@@ -749,6 +856,15 @@ push_object_to_list(void *object, NODE_OBJECT_T **object_list)
     return TSS2_RC_SUCCESS;
 }
 
+/** Add a object as last element to a linked list.
+ *
+ * @param[in] object The object to be added.
+ * @param[in,out] object_list The linked list to be extended.
+ *
+ * @retval TSS2_RC_SUCCESS if the object was added.
+ * @retval TSS2_FAPI_RC_MEMORY If memory for the list extension cannot
+ *         be allocated.
+ */
 TSS2_RC
 append_object_to_list(void *object, NODE_OBJECT_T **object_list)
 {
@@ -766,17 +882,15 @@ append_object_to_list(void *object, NODE_OBJECT_T **object_list)
     return TSS2_RC_SUCCESS;
 }
 
-TSS2_RC
-push_object_with_size_to_list(void *object, size_t size, NODE_OBJECT_T **object_list)
-{
-    TSS2_RC r;
-    r = push_object_to_list(object, object_list);
-    return_if_error(r, "Push object with size.");
-
-    (*object_list)->size = size;
-    return TSS2_RC_SUCCESS;
-}
-
+/** Initialize the internal representation of a FAPI hierarchy object.
+ *
+ * The object will be cleared and the type of the general fapi object will be
+ * set to hierarchy.
+ *
+ * @param[out] hierarchy The caller allocated hierarchy object.
+ * @param[in] esys_handle The ESAPI handle of the hierarchy which will be added to
+ *            to the object.
+ */
 void
 ifapi_init_hierarchy_object(
     IFAPI_OBJECT *hierarchy,
@@ -788,6 +902,13 @@ ifapi_init_hierarchy_object(
     hierarchy->handle = esys_handle;
 }
 
+/** Get description of a FAPI object.
+ *
+ * @param[in] object The object which might have a description.
+ *
+ * @retval The character description of the object.
+ * @retval NULL if no description is available.
+ */
 char *
 get_description(IFAPI_OBJECT *object)
 {
@@ -801,28 +922,45 @@ get_description(IFAPI_OBJECT *object)
     }
 }
 
-TSS2_RC
+/** Create a directory and all sub directories.
+ *
+ * @param[in] supdir The sup directory were the directories will be created.
+ * @param[in] dir_list A linked list with the directory strings.
+ * @param[in] mode The creation mode for the directory which will be used
+ *            for the mkdir function.
+ * @retval TSS2_RC_SUCCESS on success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ */
+static TSS2_RC
 create_dirs(const char *supdir, NODE_STR_T *dir_list, mode_t mode)
 {
     char *new_dir;
     for (size_t i = 1; i <= ifapi_path_length(dir_list); i++) {
-        TSS2_RC r =  ifapi_path_string_n(&new_dir, supdir, dir_list, NULL, i);
+        TSS2_RC r = ifapi_path_string_n(&new_dir, supdir, dir_list, NULL, i);
         return_if_error(r, "Create path string");
-        struct stat buffer;
         LOG_TRACE("Check file: %s", new_dir);
-        if (stat(new_dir, &buffer) != 0) {
-            int rc = mkdir(new_dir, mode);
-            if (rc != 0) {
-                LOG_ERROR("mkdir not possible: %i %s", rc, new_dir);
-                free(new_dir);
-                return TSS2_FAPI_RC_BAD_VALUE;
-            }
+        int rc = mkdir(new_dir, mode);
+        if (rc != 0 && errno != EEXIST) {
+            LOG_ERROR("mkdir not possible: %i %s", rc, new_dir);
+            free(new_dir);
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         free(new_dir);
     }
     return TSS2_RC_SUCCESS;
 }
 
+/** Create sub-directories in a certain directory.
+ *
+ * @param[in] supdir The directory in which the new directories shall be created.
+ * @param[in] path The path containing one or more sub-directories.
+ *
+ * @retval TSS2_RC_SUCCESS: If the directories were created.
+ * @retval TSS2_FAPI_RC_MEMORY: If the linked list with the sub-directories
+ *                              cannot be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE: If a directory cannot be created.
+ */
 TSS2_RC
 ifapi_create_dirs(const char *supdir, const char *path)
 {
@@ -840,100 +978,17 @@ error_cleanup:
     return r;
 }
 
-TSS2_RC
-init_explicit_key_path(
-    const char *context_profile,
-    const char *ipath,
-    NODE_STR_T **list_node1,
-    NODE_STR_T **current_list_node,
-    NODE_STR_T **result)
-{
-    *list_node1 = split_string(ipath, IFAPI_FILE_DELIM);
-    NODE_STR_T *list_node = *list_node1;
-    char const *profile;
-    char *hierarchy;
-    TSS2_RC r = TSS2_RC_SUCCESS;
-
-    *result = NULL;
-    if (list_node == NULL) {
-        LOG_ERROR("Invalid path");
-        free_string_list(*list_node1);
-        return  TSS2_FAPI_RC_BAD_VALUE;
-    }
-    if (strncmp("P_", list_node->str, 2) == 0) {
-        profile = list_node->str;
-        list_node = list_node->next;
-    } else {
-        profile = context_profile;
-    }
-    *result = init_string_list(profile);
-    if (result == NULL) {
-        free_string_list(*list_node1);
-        LOG_ERROR("Out of memory");
-        return  TSS2_FAPI_RC_MEMORY;
-    }
-    if (list_node == NULL) {
-        hierarchy = "HS";
-    } else {
-        if (strcmp(list_node->str, "HS") == 0 ||
-                strcmp(list_node->str, "HE") == 0 ||
-                strcmp(list_node->str, "HP") == 0 ||
-                strcmp(list_node->str, "HN") == 0 ||
-                strcmp(list_node->str, "HP") == 0) {
-            hierarchy = list_node->str;
-            list_node = list_node->next;
-        } else if (strcmp(list_node->str, "EK") == 0) {
-            hierarchy = "HE";
-        } else if (list_node->next != NULL &&
-                   (strcmp(list_node->str, "SRK") == 0 ||
-                    strcmp(list_node->str, "SDK") == 0 ||
-                    strcmp(list_node->str, "UNK") == 0 ||
-                    strcmp(list_node->str, "UDK") == 0)) {
-            hierarchy = "HS";
-        } else {
-            hierarchy = "HS";
-        }
-    }
-    if (!add_string_to_list(*result, hierarchy)) {
-        LOG_ERROR("Out of memory");
-        r =  TSS2_FAPI_RC_MEMORY;
-        goto error;
-    }
-    if (list_node == NULL) {
-        goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "Explicit path can't be determined.",
-                   error);
-    }
-    if (!add_string_to_list(*result, list_node->str)) {
-        LOG_ERROR("Out of memory");
-        r = TSS2_FAPI_RC_MEMORY;
-        goto error;
-    }
-    *current_list_node = list_node->next;
-    return TSS2_RC_SUCCESS;
-
-error:
-    free_string_list(*result);
-    *result = NULL;
-    free_string_list(*list_node1);
-    *list_node1 = NULL;
-    return r;
-}
-
-size_t
-policy_digest_size(IFAPI_OBJECT *object)
-{
-    switch (object->objectType) {
-    case IFAPI_KEY_OBJ:
-        return object->misc.key.public.publicArea.authPolicy.size;
-    case IFAPI_NV_OBJ:
-        return object->misc.nv.public.nvPublic.authPolicy.size;
-    case IFAPI_HIERARCHY_OBJ:
-        return object->misc.hierarchy.authPolicy.size;
-    default:
-        return 0;
-    }
-}
-
+/** Determine whether authentication with an auth value is needed ro an object..
+ *
+ * In the key store the information whether an auth value was provided for an
+ * object is saved. Thus the it is possible to decide whether the auth value
+ * callback is required for authentication.
+ *
+ * @param[in] object The object which has to be checked..
+ *
+ * @retval true: If an auth value was provided.
+ * @retval false: If not.
+ */
 bool
 object_with_auth(IFAPI_OBJECT *object)
 {
@@ -949,6 +1004,12 @@ object_with_auth(IFAPI_OBJECT *object)
     }
 }
 
+/** Free memory allocated during deserialization of a policy element.
+ *
+ * Depending on the element type the fields of a policy element are freed.
+ *
+ * @param[in] policy The policy element.
+ */
 static void
 cleanup_policy_element(TPMT_POLICYELEMENT *policy)
 {
@@ -967,6 +1028,7 @@ cleanup_policy_element(TPMT_POLICYELEMENT *policy)
         case POLICYSIGNED:
             SAFE_FREE(policy->element.PolicySigned.keyPath);
             SAFE_FREE(policy->element.PolicySigned.keyPEM);
+            SAFE_FREE(policy->element.PolicySigned.publicKeyHint);
             break;
         case POLICYPCR:
             SAFE_FREE(policy->element.PolicyPCR.pcrs);
@@ -981,15 +1043,26 @@ cleanup_policy_element(TPMT_POLICYELEMENT *policy)
             for (size_t i = 0; i < 3; i++) {
                 SAFE_FREE(policy->element.PolicyNameHash.namePaths[i]);
             }
+            break;
+        case POLICYACTION:
+            SAFE_FREE(policy->element.PolicyAction.action);
+            break;
         }
 }
 
-static void cleanup_policy_elements(TPML_POLICYELEMENTS *policy)
+/** Free memory allocated during deserialization of a a policy element list.
+ *
+ * All elements of a policy element list are freed.
+ *
+ * @param[in] policy The policy element list.
+ */
+static void
+cleanup_policy_elements(TPML_POLICYELEMENTS *policy)
 {
     size_t i, j;
     if (policy != NULL) {
         for (i = 0; i < policy->count; i++) {
-            if (policy->elements[i].type ==  POLICYOR) {
+            if (policy->elements[i].type == POLICYOR) {
                 /* Policy with sub policies */
                 TPML_POLICYBRANCHES *branches = policy->elements[i].element.PolicyOr.branches;
                 for (j = 0; j < branches->count; j++) {
@@ -1010,28 +1083,37 @@ static void cleanup_policy_elements(TPML_POLICYELEMENTS *policy)
  *
  * The object will not be freed (might be declared on the stack).
  *
- * @param[in]  object The policy to be cleaned up.
+ * @param[in] policy The policy to be cleaned up.
  *
  */
-void ifapi_cleanup_policy_harness(TPMS_POLICY_HARNESS *harness)
+void
+ifapi_cleanup_policy(TPMS_POLICY *policy)
 {
-    if (harness) {
-       SAFE_FREE(harness->description);
-       if (harness->policyAuthorizations) {
-          for (size_t i = 0; i < harness->policyAuthorizations->count; i++) {
-              SAFE_FREE(harness->policyAuthorizations->
-                      authorizations[i].type);
-          }
-       }
-       SAFE_FREE(harness->policyAuthorizations);
-       cleanup_policy_elements(harness->policy);
+    if (policy) {
+        SAFE_FREE(policy->description);
+        if (policy->policyAuthorizations) {
+            for (size_t i = 0; i < policy->policyAuthorizations->count; i++) {
+                SAFE_FREE(policy->policyAuthorizations->authorizations[i].type);
+            }
+        }
+        SAFE_FREE(policy->policyAuthorizations);
+        cleanup_policy_elements(policy->policy);
     }
 }
 
-static void cleanup_policy_object(POLICY_OBJECT * object) {
+/** Free memory of a policy object.
+ *
+ * The memory allocated during deserialization of the policy will
+ * also be freed.
+ *
+ * @param[in] object The policy object to be cleaned up.
+ *
+ */
+static void
+cleanup_policy_object(POLICY_OBJECT * object) {
     if (object != NULL) {
         SAFE_FREE(object->path);
-        ifapi_cleanup_policy_harness(&object->policy);
+        ifapi_cleanup_policy(&object->policy);
         cleanup_policy_object(object->next);
     }
 }
@@ -1039,8 +1121,16 @@ static void cleanup_policy_object(POLICY_OBJECT * object) {
 static TPML_POLICYELEMENTS *
 copy_policy_elements(const TPML_POLICYELEMENTS *from_policy);
 
-static TSS2_RC copy_policy_harness(TPMS_POLICY_HARNESS * dest,
-        const TPMS_POLICY_HARNESS * src) {
+/** Copy policy structure.
+ *
+ * @param[in] src The policy structure to be copied.
+ * @param[out] dest The destination policy structure.
+ * @retval TSS2_RC_SUCCESS on success.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
+static TSS2_RC
+copy_policy(TPMS_POLICY * dest,
+        const TPMS_POLICY * src) {
     /* Check for NULL references */
     if (dest == NULL || src == NULL) {
         return TSS2_FAPI_RC_MEMORY;
@@ -1048,17 +1138,24 @@ static TSS2_RC copy_policy_harness(TPMS_POLICY_HARNESS * dest,
 
     TSS2_RC r = TSS2_RC_SUCCESS;
     dest->description = NULL;
-    strdup_check(dest->description,src->description,r, error_cleanup);
+    strdup_check(dest->description, src->description, r, error_cleanup);
     dest->policy = copy_policy_elements(src->policy);
     goto_if_null2(dest->policy, "Out of memory", r, TSS2_FAPI_RC_MEMORY,
             error_cleanup);
 
     return r;
 error_cleanup:
-    ifapi_cleanup_policy_harness(dest);
+    ifapi_cleanup_policy(dest);
     return r;
 }
 
+/** Copy policy object.
+ *
+ * @param[in] src The policy object to be copied.
+ * @param[out] dest The destination policy object.
+ * @retval TSS2_RC_SUCCESS on success.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
 static TSS2_RC
 copy_policy_object(POLICY_OBJECT * dest, const POLICY_OBJECT * src) {
     /* Check for NULL references */
@@ -1071,8 +1168,8 @@ copy_policy_object(POLICY_OBJECT * dest, const POLICY_OBJECT * src) {
     dest->policy.policyAuthorizations = NULL;
     dest->policy.policy = NULL;
     strdup_check(dest->path, src->path, r, error_cleanup);
-    r = copy_policy_harness(&dest->policy, &src->policy);
-    goto_if_error(r, "Could not copy policy harness", error_cleanup);
+    r = copy_policy(&dest->policy, &src->policy);
+    goto_if_error(r, "Could not copy policy", error_cleanup);
     if (src->next != NULL) {
         dest->next = malloc(sizeof(POLICY_OBJECT));
         goto_if_null(dest->next, "Out of memory", r, error_cleanup);
@@ -1087,6 +1184,14 @@ error_cleanup:
     return r;
 }
 
+/** Copy policy authorization.
+ *
+ * @param[in] src The policy authorization to be copied.
+ * @param[out] dest The destination policy authorization.
+ * @retval TSS2_RC_SUCCESS on success.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
 static TSS2_RC
 copy_policyauthorization(TPMS_POLICYAUTHORIZATION * dest,
         const TPMS_POLICYAUTHORIZATION * src) {
@@ -1106,6 +1211,12 @@ error_cleanup:
     return r;
 }
 
+/** Copy policy branches.
+ *
+ * @param[in] src The policy branches to be copied.
+ * @param[out] dest The destination policy branches.
+ * @retval TSS2_RC_SUCCESS on success.
+ */
 static TPML_POLICYBRANCHES *
 copy_policy_branches(const TPML_POLICYBRANCHES *from_branches)
 {
@@ -1114,17 +1225,21 @@ copy_policy_branches(const TPML_POLICYBRANCHES *from_branches)
 
     to_branches = calloc(1, sizeof(TPML_POLICYBRANCHES) +
                          from_branches->count * sizeof(TPMS_POLICYBRANCH));
+    if (!to_branches)
+        return NULL;
     to_branches->count = from_branches->count;
     for (j = 0; j < from_branches->count; j++) {
         to_branches->authorizations[j].name = strdup(from_branches->authorizations[j].name);
         if (!to_branches->authorizations[j].name)
             goto error;
-        to_branches->authorizations[j].description = strdup(from_branches->authorizations[j].description);
+        to_branches->authorizations[j].description =
+            strdup(from_branches->authorizations[j].description);
         if (!to_branches->authorizations[j].description)
             goto error;
-        to_branches->authorizations[j].policy = copy_policy_elements(from_branches->authorizations[j].policy);
-        if (to_branches->authorizations[j].policy == NULL &&
-                from_branches->authorizations[j].policy != NULL) {
+        to_branches->authorizations[j].policy =
+            copy_policy_elements(from_branches->authorizations[j].policy);
+        if (to_branches->authorizations[j].policy == NULL
+            && from_branches->authorizations[j].policy != NULL) {
             LOG_ERROR("Out of memory.");
             goto error;
         }
@@ -1133,19 +1248,29 @@ copy_policy_branches(const TPML_POLICYBRANCHES *from_branches)
     }
     return to_branches;
 
- error:
-    if (to_branches) {
-        for (j = 0; j < to_branches->count; j++) {
-            SAFE_FREE(to_branches->authorizations[j].name);
-            SAFE_FREE(to_branches->authorizations[j].description);
-            cleanup_policy_elements(to_branches->authorizations[j].policy);
-        }
-        SAFE_FREE(to_branches);
+error:
+    for (j = 0; j < to_branches->count; j++) {
+        SAFE_FREE(to_branches->authorizations[j].name);
+        SAFE_FREE(to_branches->authorizations[j].description);
+        cleanup_policy_elements(to_branches->authorizations[j].policy);
     }
+    SAFE_FREE(to_branches);
     return NULL;
 }
 
-TSS2_RC
+/** Create a copy of a policy element.
+ *
+ * Depending on the type of a poliy element a copy with newly allocated memory will be
+ * created.
+ *
+ * @param[in]  from_policy The policy to be copied.
+ * @param[out] to_policy The new policy element.
+ *
+ * @retval TSS2_RC_SUCCESS: if copying was successful.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE: If no from policy or no to policy was passed.
+ * @retval TSS2_FAPI_RC_MEMORY: If not enough memory can be allocated.
+ */
+static TSS2_RC
 copy_policy_element(const TPMT_POLICYELEMENT *from_policy, TPMT_POLICYELEMENT *to_policy)
 {
     if (from_policy == NULL || to_policy == NULL) {
@@ -1163,17 +1288,17 @@ copy_policy_element(const TPMT_POLICYELEMENT *from_policy, TPMT_POLICYELEMENT *t
         break;
     case POLICYAUTHORIZE:
         strdup_check(to_policy->element.PolicyAuthorize.keyPath,
-                from_policy->element.PolicyAuthorize.keyPath, r, error);
+                     from_policy->element.PolicyAuthorize.keyPath, r, error);
         strdup_check(to_policy->element.PolicyAuthorize.keyPEM,
-                from_policy->element.PolicyAuthorize.keyPEM, r, error);
+                     from_policy->element.PolicyAuthorize.keyPEM, r, error);
         if (from_policy->element.PolicyAuthorize.policy_list) {
             to_policy->element.PolicyAuthorize.policy_list =
                 malloc(sizeof(POLICY_OBJECT));
             goto_if_null2(to_policy->element.PolicyAuthorize.policy_list,
-                    "Out of memory", r, TSS2_FAPI_RC_MEMORY, error);
+                          "Out of memory", r, TSS2_FAPI_RC_MEMORY, error);
             to_policy->element.PolicyAuthorize.policy_list->next = NULL;
             r = copy_policy_object(to_policy->element.PolicyAuthorize.policy_list,
-                    from_policy->element.PolicyAuthorize.policy_list);
+                                   from_policy->element.PolicyAuthorize.policy_list);
             goto_if_error(r, "Could not copy policy list", error);
 
         }
@@ -1181,10 +1306,9 @@ copy_policy_element(const TPMT_POLICYELEMENT *from_policy, TPMT_POLICYELEMENT *t
             to_policy->element.PolicyAuthorize.authorization =
                 malloc(sizeof(TPMS_POLICYAUTHORIZATION));
             goto_if_null(to_policy->element.PolicyAuthorize.authorization,
-                    "Out of memory", r, error);
-            r = copy_policyauthorization(
-                    to_policy->element.PolicyAuthorize.authorization,
-                    from_policy->element.PolicyAuthorize.authorization);
+                         "Out of memory", r, error);
+            r = copy_policyauthorization(to_policy->element.PolicyAuthorize.authorization,
+                                         from_policy->element.PolicyAuthorize.authorization);
             goto_if_error(r, "Could not copy policy authorization", error);
         }
         break;
@@ -1197,6 +1321,8 @@ copy_policy_element(const TPMT_POLICYELEMENT *from_policy, TPMT_POLICYELEMENT *t
                      from_policy->element.PolicySigned.keyPath, r, error);
         strdup_check(to_policy->element.PolicySigned.keyPEM,
                      from_policy->element.PolicySigned.keyPEM, r, error);
+        strdup_check(to_policy->element.PolicySigned.publicKeyHint,
+                     from_policy->element.PolicySigned.publicKeyHint, r, error);
         break;
     case POLICYPCR:
         to_policy->element.PolicyPCR.pcrs =
@@ -1230,15 +1356,22 @@ copy_policy_element(const TPMT_POLICYELEMENT *from_policy, TPMT_POLICYELEMENT *t
         to_policy->element.PolicyOr.branches =
             copy_policy_branches(from_policy->element.PolicyOr.branches);
         goto_if_null2(to_policy->element.PolicyOr.branches, "Out of memory",
-                r, TSS2_FAPI_RC_MEMORY, error);
+                      r, TSS2_FAPI_RC_MEMORY, error);
         break;
     }
     return TSS2_RC_SUCCESS;
 
- error:
+error:
     return r;
 }
 
+/** Copy a list of policy elements
+ *
+ * @param[in] form_policy The policy list to be copied.
+ * @retval NULL If the policy cannot be copied.
+ * @retval TPML_POLICYELEMENTS The copy of the policy list.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
 static TPML_POLICYELEMENTS *
 copy_policy_elements(const TPML_POLICYELEMENTS *from_policy)
 {
@@ -1253,16 +1386,15 @@ copy_policy_elements(const TPML_POLICYELEMENTS *from_policy)
                        from_policy->count * sizeof(TPMT_POLICYELEMENT));
     to_policy->count = from_policy->count;
     for (i = 0; i < from_policy->count; i++) {
-        if (from_policy->elements[i].type ==  POLICYOR) {
+        if (from_policy->elements[i].type == POLICYOR) {
             to_policy->elements[i].type = POLICYOR;
             /* Policy with sub policies */
             TPML_POLICYBRANCHES *branches = from_policy->elements[i].element.PolicyOr.branches;
             to_policy->elements[i].element.PolicyOr.branches = copy_policy_branches(branches);
-            if(branches != NULL
-               && to_policy->elements[i].element.PolicyOr.branches == NULL) {
-                    LOG_ERROR("Out of memory");
-                    SAFE_FREE(to_policy);
-                    return NULL;
+            if (to_policy->elements[i].element.PolicyOr.branches == NULL) {
+                LOG_ERROR("Out of memory");
+                SAFE_FREE(to_policy);
+                return NULL;
             }
         } else {
             r = copy_policy_element(&from_policy->elements[i], &to_policy->elements[i]);
@@ -1275,33 +1407,31 @@ copy_policy_elements(const TPML_POLICYELEMENTS *from_policy)
     return to_policy;
 }
 
-
-
-/** Copy policy harness.
- * The object will not be freed (might be declared on the stack).
+/** Copy policy.
  *
- * @param[in] from_harness the policy to be copied.
- * @retval The new harness or NULL if not enough memory was available.
- *
+ * @param[in] from_policy the policy to be copied.
+ * @retval The new policy or NULL if not enough memory was available.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
-TPMS_POLICY_HARNESS *
-ifapi_copy_policy_harness(
-    const TPMS_POLICY_HARNESS *from_harness)
+TPMS_POLICY *
+ifapi_copy_policy(
+    const TPMS_POLICY *from_policy)
 {
-    if (from_harness == NULL) {
+    if (from_policy == NULL) {
         return NULL;
     }
-    TPMS_POLICY_HARNESS *to_harness = calloc(1, sizeof(TPMS_POLICY_HARNESS));
-    if (to_harness == NULL) {
+    TPMS_POLICY *to_policy = calloc(1, sizeof(TPMS_POLICY));
+    if (to_policy == NULL) {
         return NULL;
     }
-    to_harness->description = NULL;
-    TSS2_RC r = copy_policy_harness(to_harness, from_harness);
+    to_policy->description = NULL;
+    TSS2_RC r = copy_policy(to_policy, from_policy);
     if (r != TSS2_RC_SUCCESS) {
-        SAFE_FREE(to_harness);
+        SAFE_FREE(to_policy);
         return NULL;
     } else {
-        return to_harness;
+        return to_policy;
     }
 }
 
@@ -1309,9 +1439,14 @@ ifapi_copy_policy_harness(
  *
  * @param[in] publicInfo The public information of the TPM object.
  * @param[out] name The computed name.
- * @retval TPM2_RC_SUCCESS  or one of the possible errors TSS2_ESYS_RC_BAD_VALUE,
- * TSS2_ESYS_RC_MEMORY, TSS2_ESYS_RC_GENERAL_FAILURE, TSS2_ESYS_RC_NOT_IMPLEMENTED,
+ * @retval TPM2_RC_SUCCESS  or one of the possible errors TSS2_FAPI_RC_BAD_VALUE,
+ * TSS2_FAPI_RC_MEMORY, TSS2_FAPI_RC_GENERAL_FAILURE.
  * or return codes of SAPI errors.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
  */
 TSS2_RC
 ifapi_get_name(TPMT_PUBLIC *publicInfo, TPM2B_NAME *name)
@@ -1332,14 +1467,26 @@ ifapi_get_name(TPMT_PUBLIC *publicInfo, TPM2B_NAME *name)
 
     r = Tss2_MU_TPMT_PUBLIC_Marshal(publicInfo,
                                     &buffer[0], sizeof(TPMT_PUBLIC), &offset);
-    return_if_error(r, "Marshaling TPMT_PUBLIC");
+    if (r) {
+        LOG_ERROR("Marshaling TPMT_PUBLIC");
+        ifapi_crypto_hash_abort(&cryptoContext);
+        return r;
+    }
 
     r = ifapi_crypto_hash_update(cryptoContext, &buffer[0], offset);
-    return_if_error(r, "crypto hash update");
+    if (r) {
+        LOG_ERROR("crypto hash update");
+        ifapi_crypto_hash_abort(&cryptoContext);
+        return r;
+    }
 
     r = ifapi_crypto_hash_finish(&cryptoContext, &name->name[len_alg_id],
                                  &size);
-    return_if_error(r, "crypto hash finish");
+    if (r) {
+        LOG_ERROR("crypto hash finish");
+        ifapi_crypto_hash_abort(&cryptoContext);
+        return r;
+    }
 
     offset = 0;
     r = Tss2_MU_TPMI_ALG_HASH_Marshal(publicInfo->nameAlg,
@@ -1354,15 +1501,14 @@ ifapi_get_name(TPMT_PUBLIC *publicInfo, TPM2B_NAME *name)
 /** Compute the name from the public data of a NV index.
  *
  * The name of a NV index is computed as follows:
- *   name =  nameAlg||Hash(nameAlg,marshal(publicArea))
+ *   name = nameAlg||Hash(nameAlg,marshal(publicArea))
  * @param[in] publicInfo The public information of the NV index.
  * @param[out] name The computed name.
  * @retval TSS2_RC_SUCCESS on success.
- * @retval TSS2_ESYS_RC_MEMORY Memory can not be allocated.
- * @retval TSS2_ESYS_RC_BAD_VALUE for invalid parameters.
- * @retval TSS2_ESYS_RC_BAD_REFERENCE for unexpected NULL pointer parameters.
- * @retval TSS2_ESYS_RC_GENERAL_FAILURE for errors of the crypto library.
- * @retval TSS2_ESYS_RC_NOT_IMPLEMENTED if hash algorithm is not implemented.
+ * @retval TSS2_FAPI_RC_MEMORY Memory can not be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE for invalid parameters.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE for unexpected NULL pointer parameters.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE for errors of the crypto library.
  * @retval TSS2_SYS_RC_* for SAPI errors.
  */
 TSS2_RC
@@ -1379,22 +1525,39 @@ ifapi_nv_get_name(TPM2B_NV_PUBLIC *publicInfo, TPM2B_NAME *name)
         return TSS2_RC_SUCCESS;
     }
     TSS2_RC r;
+
+    /* Initialize the hash computation with the nameAlg. */
     r = ifapi_crypto_hash_start(&cryptoContext, publicInfo->nvPublic.nameAlg);
     return_if_error(r, "Crypto hash start");
 
+    /* Get the marshaled data of the public area. */
     r = Tss2_MU_TPMS_NV_PUBLIC_Marshal(&publicInfo->nvPublic,
                                        &buffer[0], sizeof(TPMS_NV_PUBLIC),
                                        &offset);
-    return_if_error(r, "Marshaling TPMS_NV_PUBLIC");
+    if (r) {
+        LOG_ERROR("Marshaling TPMS_NV_PUBLIC");
+        ifapi_crypto_hash_abort(&cryptoContext);
+        return r;
+    }
 
     r = ifapi_crypto_hash_update(cryptoContext, &buffer[0], offset);
-    return_if_error(r, "crypto hash update");
+    if (r) {
+        LOG_ERROR("crypto hash update");
+        ifapi_crypto_hash_abort(&cryptoContext);
+        return r;
+    }
 
+    /* The hash will be stored after the nameAlg.*/
     r = ifapi_crypto_hash_finish(&cryptoContext, &name->name[len_alg_id],
                                  &size);
-    return_if_error(r, "crypto hash finish");
+    if (r) {
+        LOG_ERROR("crypto hash finish");
+        ifapi_crypto_hash_abort(&cryptoContext);
+        return r;
+    }
 
     offset = 0;
+    /* Store the nameAlg in the result. */
     r = Tss2_MU_TPMI_ALG_HASH_Marshal(publicInfo->nvPublic.nameAlg,
                                       &name->name[0], sizeof(TPMI_ALG_HASH),
                                       &offset);
@@ -1407,9 +1570,14 @@ ifapi_nv_get_name(TPM2B_NV_PUBLIC *publicInfo, TPM2B_NAME *name)
 /** Check whether a nv or key object has a certain name.
  *
  * @param[in] object The object (has to be checked whether it's a key).
- @ @param[in] name The name to be compared.
+ * @param[in] name The name to be compared.
  * @param[out] equal If the two names are equal.
  * @retval TSS2_RC_SUCCESSS if name of object can be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
  */
 TSS2_RC
 ifapi_object_cmp_name(IFAPI_OBJECT *object, void *name, bool *equal)
@@ -1445,7 +1613,7 @@ ifapi_object_cmp_name(IFAPI_OBJECT *object, void *name, bool *equal)
 /** Check whether a nv object has a certain public info.
  *
  * @param[in] object The object (has to be checked whether it's a key).
- @ @param[in] nv_public The NV public data with the NV index.
+ * @param[in] nv_public The NV public data with the NV index.
  * @param[out] equal If the two names are equal.
  * @retval TSS2_RC_SUCCESSS if name of object can be deserialized.
  */
@@ -1473,12 +1641,19 @@ ifapi_object_cmp_nv_public(IFAPI_OBJECT *object, void *nv_public, bool *equal)
  * buffer of the TPM2B has already DER format.
  * parameters.
  * @param[in] sig_key_object The signing key.
- * @param[in] TPMT_SIGNATURE the signature in TPM format.
+ * @param[in] tpm_signature the signature in TPM format.
  * @param[out] signature The byte array of the signature (callee allocated).
  * @param[out] signatureSize The size of the byte array.
+ *
  * @retval TSS2_RC_SUCCESSS if the conversion was successful.
+ * @retval TSS2_FAPI_RC_MEMORY: if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE If an internal error occurs, which is
+ *         not covered by other return codes (e.g. a unexpected openssl
+ *         error).
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
-
 TSS2_RC
 ifapi_tpm_to_fapi_signature(
     IFAPI_OBJECT *sig_key_object,
@@ -1492,6 +1667,8 @@ ifapi_tpm_to_fapi_signature(
     TPMT_SIG_SCHEME *sig_scheme = &sig_key_object->misc.key.signing_scheme;
 
     if (sig_key_object->misc.key.public.publicArea.type == TPM2_ALG_RSA) {
+        /* Signature is already in DER format. */
+
         if (sig_scheme->scheme == TPM2_ALG_RSAPSS) {
             *signatureSize = tpm_signature->signature.rsapss.sig.size;
             *signature = malloc(*signatureSize);
@@ -1510,7 +1687,8 @@ ifapi_tpm_to_fapi_signature(
                    *signatureSize);
         }
     } else if (sig_key_object->misc.key.public.publicArea.type == TPM2_ALG_ECC &&
-            sig_scheme->scheme == TPM2_ALG_ECDSA) {
+               sig_scheme->scheme == TPM2_ALG_ECDSA) {
+        /* For ECC signatures the TPM signaute has to be converted to DER. */
         r = ifapi_tpm_ecc_sig_to_der(tpm_signature,
                                      signature, signatureSize);
         goto_if_error(r, "Conversion to DER failed", error_cleanup);
@@ -1524,7 +1702,25 @@ error_cleanup:
     return r;
 }
 
-
+/** Compute the JSON representation of quote information.
+ *
+ * The attest generated by a TPM quote will be converted into a
+ * JSON representation together with the signature scheme of the
+ * key used for the quote.
+ *
+ * @param[in]  sig_key_object The key object which was used for the quote.
+ * @param[in]  tpm_quoted: The attest produced by the quote.
+ * @param[out] quoteInfo The character string with the JSON representation of the
+ *             attest together with the signing schemed.
+ *
+ * @retval TSS2_RC_SUCCESS: If the conversion was successful.
+ * @retval TSS2_FAPI_RC_MEMORY: if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE: If an invalid value is detected during
+ *         serialisation.
+ * @retval Possible error codes of the unmarshaling function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_compute_quote_info(
     IFAPI_OBJECT *sig_key_object,
@@ -1537,16 +1733,19 @@ ifapi_compute_quote_info(
     TPMS_ATTEST attest_struct;
     FAPI_QUOTE_INFO fapi_quote_info;
 
+    /* The TPM2B_ATTEST contains the marshaled TPMS_ATTEST structure. */
     r = Tss2_MU_TPMS_ATTEST_Unmarshal((const uint8_t *)
                                       &tpm_quoted->attestationData[0],
                                       tpm_quoted->size, &offset, &attest_struct);
     return_if_error(r, "Unmarshal TPMS_ATTEST.");
 
     fapi_quote_info.attest = attest_struct;
+    /* The signate scheme will be taken from the key used for qoting. */
     fapi_quote_info.sig_scheme = sig_key_object->misc.key.signing_scheme;
     r = ifapi_json_FAPI_QUOTE_INFO_serialize(&fapi_quote_info, &jso);
     return_if_error(r, "Conversion to TPM2B_ATTEST to JSON.");
 
+    /* The intermediate structure of type FAPI_QOTE_INFO will be serialized. */
     const char *quote_json = json_object_to_json_string_ext(jso,
                              JSON_C_TO_STRING_PRETTY);
     goto_if_null(quote_json, "Conversion attest to json.",
@@ -1560,6 +1759,24 @@ cleanup:
     return r;
 }
 
+/** Deserialize the JSON representation of FAPI quote information.
+ *
+ * The JSON representation of FAPI quote information will be
+ * deserialized to a FAPI_QUOTE_INFO structure and also the TPM2B
+ * version of the attest will be created.
+ *
+ * @param[in]  quoteInfo The JSON representation if the quote
+ *             information.
+ * @param[out] tpm_quoted: The marhaled version of the attest structure.
+ * @param[out] fapi_quote_info The quote information structure used by
+ *             FAPI.
+ *
+ * @retval TSS2_RC_SUCCESS: If the deserialization was successful.
+ * @retval TSS2_FAPI_RC_BAD_VALUE: If an invalid value is detected during
+ *         deserialisation.
+ * @retval Possible error codes of the marshaling function.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_get_quote_info(
     char const *quoteInfo,
@@ -1595,53 +1812,16 @@ cleanup:
     return r;
 }
 
-
-TSS2_RC
-ifapi_load_sym_key_template(IFAPI_KEY_TEMPLATE *result_template)
-{
-    IFAPI_KEY_TEMPLATE template = {
-        .persistent = TPM2_NO,
-        .persistent_handle = 0,
-        .public = {
-            .size = 0,
-            .publicArea = {
-                .type = TPM2_ALG_KEYEDHASH,
-                .nameAlg = TPM2_ALG_SHA256,
-                .objectAttributes = (
-                    TPMA_OBJECT_NODA |
-                    TPMA_OBJECT_FIXEDTPM |
-                    TPMA_OBJECT_USERWITHAUTH |
-                    TPMA_OBJECT_FIXEDPARENT
-                ),
-                .authPolicy = {
-                    .size = 0,
-                },
-                .parameters.keyedHashDetail = {
-                    .scheme = {
-                        .scheme = TPM2_ALG_NULL,
-                        .details = {
-                            .hmac = {
-                                .hashAlg = TPM2_ALG_SHA256
-                            }
-                        }
-                    }
-                },
-                .unique.keyedHash = {
-                    .size = 0,
-                    .buffer = {},
-                },
-            }
-        }
-    };
-
-    *result_template = template;
-    return TSS2_RC_SUCCESS;
-}
-
-
-/* Determine start index for NV object depending on type.
+/** Determine start index for NV object depending on type.
  *
  * The value will be determined based on e TCG handle registry.
+ *
+ * @param[in]  path The path used for the NV object.
+ * @param[out] start_nv_index The first possible NV index for this type.
+ *
+ * @retval TSS2_RC_SUCCESS If the index for the path can be determined.
+ * @retval TSS2_FAPI_RC_BAD_PATH If no handle can be assigned.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_get_nv_start_index(const char *path, TPM2_HANDLE *start_nv_index)
@@ -1686,6 +1866,18 @@ ifapi_get_nv_start_index(const char *path, TPM2_HANDLE *start_nv_index)
     return_error2(TSS2_FAPI_RC_BAD_PATH, "Invalid NV path: %s", path);
 }
 
+/** Compute new PCR value from a part of an event list.
+ *
+ * @param[in,out] vpcr The old and the new PCR value.
+ * @param[in] bank The bank corresponding to value of the event list
+ *                 which will be used for computation.
+ * @param[in] event The event list with the values which were extended
+ *                  for a certain bank.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the bank was not found in the event list.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
 TSS2_RC
 ifapi_extend_vpcr(
     TPM2B_DIGEST *vpcr,
@@ -1731,6 +1923,26 @@ error_cleanup:
     return r;
 }
 
+/** Check whether a event list corresponds to a certain quote information.
+ *
+ * The event list is used to compute the PCR values corresponding
+ * to this event list. The PCR digest for these PCRs is computed and compared
+ * with the attest passed with quote_info.
+ *
+ * @param[in]  jso_event_list The event list in JSON representation.
+ * @param[in]  quote_info The information structure with the attest.
+ * @param[out] pcr_digest The computed pcr_digest for the PCRs uses by FAPI.
+ *
+ * @retval TSS2_RC_SUCCESS: If the PCR digest from the event list matches
+ *         the PCR digest passed with the quote_info.
+ * @retval TSS2_FAPI_RC_SIGNATURE_VERIFICATION_FAILED: If the digest computed
+ *         from event list does not match the attest
+ * @retval TSS2_FAPI_RC_BAD_VALUE: If inappropriate values are detected in the
+ *         input data.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
 TSS2_RC
 ifapi_calculate_pcr_digest(
     json_object *jso_event_list,
@@ -1738,7 +1950,7 @@ ifapi_calculate_pcr_digest(
     TPM2B_DIGEST *pcr_digest)
 {
     TSS2_RC r;
-    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext;
+    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext = NULL;
 
     struct {
         TPMI_ALG_HASH bank;
@@ -1783,7 +1995,7 @@ ifapi_calculate_pcr_digest(
                 pcrs[n_pcrs].bank = pcr_selection->pcrSelections[i].hash;
                 pcrs[n_pcrs].value.size = hash_size;
                 memset(&pcrs[n_pcrs].value.buffer[0], 0, hash_size);
-                n_pcrs +=1;
+                n_pcrs += 1;
             }
         }
     }
@@ -1825,7 +2037,9 @@ ifapi_calculate_pcr_digest(
                    error_cleanup);
     }
 
- error_cleanup:
+error_cleanup:
+    if (cryptoContext)
+        ifapi_crypto_hash_abort(&cryptoContext);
     ifapi_cleanup_event(&event);
     return r;
 }
@@ -1835,7 +2049,7 @@ ifapi_calculate_pcr_digest(
  * It has to be checked that every hash alg from the profile is available and
  * whether the selected PCRs are available.
  * @param[in] pcr_profile The pcr profile to use as basis for the selection.
- * @param[in] pcr_capability The PCR capabilities  available for TPM.
+ * @param[in] pcr_capablity The PCR capabilities  available for TPM.
  * @retval TSS2_RC_SUCCESSS if the conversion was successful.
  * @retval TSS2_FAPI_RC_BAD_VALUE if profile is not subset of capabilities.
  */
@@ -1883,8 +2097,10 @@ ifapi_check_profile_pcr_selection(
  *
  * This includes two steps: clearing all bits but the selected and clearing empty hashalg lines.
  *
- * @param pcr_selection [in, out] The pcr selection to be filtered.
- * @param pcr_index [in] The only PCR to remain selected.
+ * @param[in,out] pcr_selection The pcr selection to be filtered.
+ * @param[in] pcr_index The only PCR to remain selected.
+ * @param[in]  pcr_count The size of the pcr list.
+ *
  * @retval TSS2_RC_SUCCESS if the filtering was successful.
  * @retval TSS2_FAPI_RC_BAD_VALUE if no pcr remain selected or the pcr selection is malformed.
  */
@@ -1939,12 +2155,28 @@ ifapi_filter_pcr_selection_by_index(
 
     if (pcr_selection->count == 0) {
         LOGBLOB_WARNING((void*)pcr_index, pcr_count * sizeof(*pcr_index),
-                        "pcr slection is empty after filtering for pcrlist");
+                        "pcr selection is empty after filtering for pcrlist");
         return TSS2_FAPI_RC_BAD_VALUE;
     }
     return TSS2_RC_SUCCESS;
 }
 
+/** Compute PCR selection and a PCR digest for a PCR value list.
+ *
+ * @param[in]  pcrs The list of PCR values.
+ * @param[out] pcr_selection The selection computed based on the
+ *             list of PCR values.
+ * @param[in]  hash_alg The hash algorithm which is used for the policy computation.
+ * @param[out] pcr_digest The computed PCR digest corresponding to the passed
+ *             PCR value list.
+ *
+ * @retval TSS2_RC_SUCCESS if the PCR selection and the PCR digest could be computed..
+ * @retval TSS2_FAPI_RC_BAD_VALUE: If inappropriate values are detected in the
+ *         input data.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ */
 TSS2_RC
 ifapi_compute_policy_digest(
     TPML_PCRVALUES *pcrs,
@@ -1954,7 +2186,7 @@ ifapi_compute_policy_digest(
 {
     TSS2_RC r = TSS2_RC_SUCCESS;
     size_t i, j;
-    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext;
+    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext = NULL;
     size_t hash_size;
     UINT32 pcr;
     UINT32 max_pcr = 0;
@@ -1993,7 +2225,7 @@ ifapi_compute_policy_digest(
     return_if_error(r, "crypto hash start");
 
     if (!(pcr_digest->size = ifapi_hash_get_digest_size(hash_alg))) {
-        goto_error(r, TSS2_ESYS_RC_NOT_IMPLEMENTED,
+        goto_error(r, TSS2_FAPI_RC_BAD_VALUE,
                    "Unsupported hash algorithm (%" PRIu16 ")", cleanup,
                    hash_alg);
     }
@@ -2002,7 +2234,7 @@ ifapi_compute_policy_digest(
         TPMS_PCR_SELECTION selection = pcr_selection->pcrSelections[i];
         TPMI_ALG_HASH hashAlg = selection.hash;
         if (!(hash_size = ifapi_hash_get_digest_size(hashAlg))) {
-            goto_error(r, TSS2_ESYS_RC_NOT_IMPLEMENTED,
+            goto_error(r, TSS2_FAPI_RC_BAD_VALUE,
                        "Unsupported hash algorithm (%" PRIu16 ")", cleanup,
                        hashAlg);
         }
@@ -2025,6 +2257,8 @@ ifapi_compute_policy_digest(
                                  (uint8_t *) & pcr_digest->buffer[0],
                                  &hash_size);
 cleanup:
+    if (cryptoContext)
+        ifapi_crypto_hash_abort(&cryptoContext);
     return r;
 }
 
@@ -2087,4 +2321,114 @@ ifapi_cmp_public_key(
     default:
         return false;
     }
+}
+
+struct CurlBufferStruct {
+  unsigned char *buffer;
+  size_t size;
+};
+
+/** Callback for copying received curl data to a buffer.
+ *
+ * The buffer will be reallocated according to the size of retrieved data.
+ *
+ * @param[in]  contents The retrieved content.
+ * @param[in]  size the block size in the content.
+ * @param[in]  nmemb The number of blocks.
+ * @retval realsize The byte size of the data.
+ */
+static size_t
+write_curl_buffer_cb(void *contents, size_t size, size_t nmemb, void *userp)
+{
+    size_t realsize = size * nmemb;
+    struct CurlBufferStruct *curl_buf = (struct CurlBufferStruct *)userp;
+
+    unsigned char *tmp_ptr = realloc(curl_buf->buffer, curl_buf->size + realsize + 1);
+    if (tmp_ptr == NULL) {
+        LOG_ERROR("Can't allocate memory in CURL callback.");
+        return 0;
+    }
+    curl_buf->buffer = tmp_ptr;
+    memcpy(&(curl_buf->buffer[curl_buf->size]), contents, realsize);
+    curl_buf->size += realsize;
+    curl_buf->buffer[curl_buf->size] = 0;
+
+    return realsize;
+}
+
+/** Get byte buffer from file system or web via curl.
+ *
+ * @param[in]  url The url of the resource.
+ * @param[out] buffer The buffer retrieved via the url.
+ * @param[out] buffer_size The size of the retrieved object.
+ *
+ * @retval 0 if buffer could be retrieved.
+ * @retval -1 if an error did occur
+ */
+int
+ifapi_get_curl_buffer(unsigned char * url, unsigned char ** buffer,
+                          size_t *buffer_size) {
+    int ret = -1;
+    struct CurlBufferStruct curl_buffer = { .size = 0, .buffer = NULL };
+
+    CURLcode rc = curl_global_init(CURL_GLOBAL_DEFAULT);
+    if (rc != CURLE_OK) {
+        LOG_ERROR("curl_global_init failed: %s", curl_easy_strerror(rc));
+        goto out_memory;
+    }
+
+    CURL *curl = curl_easy_init();
+    if (!curl) {
+        LOG_ERROR("curl_easy_init failed");
+        goto out_global_cleanup;
+    }
+
+    rc = curl_easy_setopt(curl, CURLOPT_URL, url);
+    if (rc != CURLE_OK) {
+        LOG_ERROR("curl_easy_setopt for CURLOPT_URL failed: %s",
+                curl_easy_strerror(rc));
+        goto out_easy_cleanup;
+    }
+
+    rc = curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION,
+                          write_curl_buffer_cb);
+    if (rc != CURLE_OK) {
+        LOG_ERROR("curl_easy_setopt for CURLOPT_URL failed: %s",
+                curl_easy_strerror(rc));
+        goto out_easy_cleanup;
+    }
+
+    rc = curl_easy_setopt(curl, CURLOPT_WRITEDATA,
+                          (void *)&curl_buffer);
+    if (rc != CURLE_OK) {
+        LOG_ERROR("curl_easy_setopt for CURLOPT_URL failed: %s",
+                curl_easy_strerror(rc));
+        goto out_easy_cleanup;
+    }
+
+    if (LOGMODULE_status == LOGLEVEL_TRACE) {
+        if (CURLE_OK != curl_easy_setopt(curl, CURLOPT_VERBOSE, 1L)) {
+            LOG_WARNING("Curl easy setopt verbose failed");
+        }
+    }
+
+    rc = curl_easy_perform(curl);
+    if (rc != CURLE_OK) {
+        LOG_ERROR("curl_easy_perform() failed: %s", curl_easy_strerror(rc));
+        goto out_easy_cleanup;
+    }
+
+    *buffer = curl_buffer.buffer;
+    *buffer_size = curl_buffer.size;
+
+    ret = 0;
+
+out_easy_cleanup:
+    if (ret != 0)
+        free(curl_buffer.buffer);
+    curl_easy_cleanup(curl);
+out_global_cleanup:
+    curl_global_cleanup();
+out_memory:
+    return ret;
 }

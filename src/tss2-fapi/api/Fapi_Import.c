@@ -32,9 +32,9 @@
  * Imports a JSON encoded policy, policy template or key and stores it at the
  * given path.
  *
- * @param [in,out] context The FAPI_CONTEXT
- * @param [in] path the path to which the object is imported
- * @param [in] importData The data that is imported
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path the path to which the object is imported
+ * @param[in] importData The data that is imported
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, path or importData
@@ -44,12 +44,25 @@
  * @retval TSS2_FAPI_RC_PATH_ALREADY_EXISTS: if a policy or key already exists
  *         at path.
  * @retval TSS2_FAPI_RC_BAD_VALUE: if importData contains invalid data.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the FAPI storage cannot be updated.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Import(
@@ -82,7 +95,7 @@ Fapi_Import(
 
     return_if_error_reset_state(r, "Entity_Import");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -93,9 +106,9 @@ Fapi_Import(
  *
  * Call Fapi_Import_Finish to finish the execution of this command.
  *
- * @param [in,out] context The FAPI_CONTEXT
- * @param [in] path the path to which the object is imported
- * @param [in] importData The data that is imported
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path the path to which the object is imported
+ * @param[in] importData The data that is imported
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, path or importData
@@ -105,12 +118,15 @@ Fapi_Import(
  * @retval TSS2_FAPI_RC_PATH_ALREADY_EXISTS: if a policy or key already exists
  *         at path.
  * @retval TSS2_FAPI_RC_BAD_VALUE: if importData contains invalid data.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the FAPI storage cannot be updated.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Import_Async(
@@ -126,7 +142,7 @@ Fapi_Import_Async(
     json_object *jso = NULL;
     json_object *jso2;
     size_t pos = 0;
-    TPMS_POLICY_HARNESS policyHarness;
+    TPMS_POLICY policy = { 0 };
 
     /* Check for NULL parameters */
     check_not_null(context);
@@ -159,7 +175,7 @@ Fapi_Import_Async(
         r = ifapi_initialize_sign_public(rsaOrEcc, &extPubKey->public);
         goto_if_error(r, "Could not initialize key template", cleanup_error);
 
-        r =  ifapi_get_tpm2b_public_from_pem(extPubKey->pem_ext_public,
+        r = ifapi_get_tpm2b_public_from_pem(extPubKey->pem_ext_public,
                                              &extPubKey->public);
         goto_if_error(r, "Convert PEM public key into TPM public key.", cleanup_error);
 
@@ -180,7 +196,7 @@ Fapi_Import_Async(
         context->state = IMPORT_KEY_WRITE_OBJECT_PREPARE;
 
     } else if (strcmp(importData, IFAPI_PEM_PRIVATE_KEY) == 0) {
-          return_error(TSS2_FAPI_RC_NOT_IMPLEMENTED, "Invalid import data");
+          return_error(TSS2_FAPI_RC_BAD_VALUE, "Invalid import data");
 
     } else {
         /* Check whether TCTI and ESYS are initialized */
@@ -204,17 +220,19 @@ Fapi_Import_Async(
         jso = json_tokener_parse(importData);
         return_if_null(jso, "Json error.", TSS2_FAPI_RC_BAD_VALUE);
 
-        if (ifapi_get_sub_object(jso, IFAPI_JSON_TAG_POLICY, &jso2)) {
+        if (ifapi_get_sub_object(jso, IFAPI_JSON_TAG_POLICY, &jso2) &&
+            !(ifapi_get_sub_object(jso, IFAPI_JSON_TAG_DUPLICATE, &jso2))
+            ) {
             /* Create policy object */
-            r = ifapi_json_TPMS_POLICY_HARNESS_deserialize(jso, &policyHarness);
+            r = ifapi_json_TPMS_POLICY_deserialize(jso, &policy);
             goto_if_error(r, "Serialize policy", cleanup_error);
 
             r = ifapi_policy_store_store_async(&context->pstore, &context->io,
-                    command->out_path, &policyHarness);
+                    command->out_path, &policy);
             goto_if_error_reset_state(r, "Could not open: %s", cleanup_error,
                     command->out_path);
 
-            ifapi_cleanup_policy_harness(&policyHarness);
+            ifapi_cleanup_policy(&policy);
 
             context->state = IMPORT_KEY_WRITE_POLICY;
 
@@ -254,14 +272,14 @@ Fapi_Import_Async(
         }
     }
     json_object_put(jso);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 
 cleanup_error:
-    if(jso)
+    if (jso)
         json_object_put(jso);
     context->state = _FAPI_STATE_INIT;
-    ifapi_cleanup_policy_harness(&policyHarness);
+    ifapi_cleanup_policy(&policy);
     SAFE_FREE(command->jso_string);
     SAFE_FREE(extPubKey->pem_ext_public);
     SAFE_FREE(command->out_path);
@@ -272,7 +290,7 @@ cleanup_error:
  *
  * This function should be called after a previous Fapi_Import_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -284,6 +302,18 @@ cleanup_error:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Import_Finish(
@@ -375,8 +405,9 @@ Fapi_Import_Finish(
             memset(newObject, 0, sizeof(IFAPI_OBJECT));
             newObject->objectType = IFAPI_KEY_OBJ;
             newObject->misc.key.public = keyTree->public;
-            newObject->misc.key.private.size =  command->private->size;
-            newObject->misc.key.private.buffer  = &command->private->buffer[0];
+            newObject->policy = keyTree->policy;
+            newObject->misc.key.private.size = command->private->size;
+            newObject->misc.key.private.buffer = &command->private->buffer[0];
             newObject->misc.key.policyInstance = NULL;
             newObject->misc.key.description = NULL;
             newObject->misc.key.certificate = NULL;
@@ -426,6 +457,13 @@ Fapi_Import_Finish(
 
     context->state = _FAPI_STATE_INIT;
     SAFE_FREE(command->out_path);
+
+    /* Cleanup policy for key objects.*/
+    if (newObject->objectType == IFAPI_KEY_OBJ) {
+        if (newObject->policy)
+            ifapi_cleanup_policy(newObject->policy);
+        SAFE_FREE(newObject->policy);
+    }
     SAFE_FREE(command->parent_path);
     ifapi_cleanup_ifapi_object(&command->object);
     SAFE_FREE(command->private);
@@ -437,6 +475,8 @@ Fapi_Import_Finish(
     return TSS2_RC_SUCCESS;
 
 error_cleanup:
+    if (newObject)
+        ifapi_cleanup_ifapi_object(newObject);
     SAFE_FREE(command->out_path);
     SAFE_FREE(command->parent_path);
     ifapi_cleanup_ifapi_object(&command->object);

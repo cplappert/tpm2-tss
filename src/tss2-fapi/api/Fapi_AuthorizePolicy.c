@@ -24,7 +24,7 @@
  * the user must first satisfy a policy authorized by a having been signed (and
  * made into a ticket) by an authorized party.
  *
- * @param[in, out] context The FAPI context
+ * @param[in,out] context The FAPI context
  * @param[in] policyPath The path to the policy file
  * @param[in] keyPath The path to the signing key
  * @param[in] policyRef A byte buffer that is included in the signature. May be
@@ -43,6 +43,22 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_AuthorizePolicy(
@@ -107,7 +123,7 @@ Fapi_AuthorizePolicy(
  *
  * Call Fapi_AuthorizePolicy_Finish to finish the execution of this command.
  *
- * @param[in, out] context The FAPI context
+ * @param[in,out] context The FAPI context
  * @param[in] policyPath The path to the policy file
  * @param[in] keyPath The path to the signing key
  * @param[in] policyRef A byte buffer that is included in the signature. May be
@@ -126,6 +142,10 @@ Fapi_AuthorizePolicy(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_AuthorizePolicy_Async(
@@ -152,9 +172,11 @@ Fapi_AuthorizePolicy_Async(
     check_not_null(policyPath);
     check_not_null(keyPath);
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize AuthorizePolicy");
 
+    /* Copy parameters to context for use during _Finish. */
     policy = &context->cmd.Policy_AuthorizeNewPolicy;
     strdup_check(policy->policyPath, policyPath, r, error_cleanup);
     strdup_check(policy->signingKeyPath, keyPath, r, error_cleanup);
@@ -164,14 +186,15 @@ Fapi_AuthorizePolicy_Async(
     } else {
         policy->policyRef.size = 0;
     }
-    r = ifapi_session_init(context);
-    goto_if_error(r, "Initialize PolicyAuthorizeNewPolicy", error_cleanup);
 
+    /* Initialize the context state for this operation. */
     context->state = AUTHORIZE_NEW_LOAD_KEY;
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(policy->policyPath);
     SAFE_FREE(policy->signingKeyPath);
     return r;
@@ -181,7 +204,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_AuthorizePolicy_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -193,6 +216,18 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_AuthorizePolicy_Finish(
@@ -202,7 +237,7 @@ Fapi_AuthorizePolicy_Finish(
 
     TSS2_RC r;
     TPMI_ALG_HASH hashAlg;
-    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext;
+    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext = NULL;
     size_t hashSize;
     size_t digestIdx;
     TPM2B_DIGEST aHash;
@@ -215,18 +250,18 @@ Fapi_AuthorizePolicy_Finish(
     IFAPI_Fapi_AuthorizePolicy * command =
         &context->cmd.Policy_AuthorizeNewPolicy;
     TPMS_POLICYAUTHORIZATION *authorization = &command->authorization;
-    TPMS_POLICY_HARNESS *policyHarness = &context->policy.harness;
+    TPMS_POLICY *policy = &context->policy.policy;
     TPMT_SIGNATURE *signature;
     IFAPI_OBJECT ** keyObject = &context->Key_Sign.key_object;
 
     switch (context->state) {
         statecase(context->state, AUTHORIZE_NEW_LOAD_KEY);
+            /* Load the key used for signing the policy authorization. */
             r = ifapi_load_key(context, command->signingKeyPath,
                                keyObject);
             return_try_again(r);
             goto_if_error(r, "Fapi sign.", cleanup);
 
-            context->state = AUTHORIZE_NEW_CALCULATE_POLICY;
             fallthrough;
 
         statecase(context->state, AUTHORIZE_NEW_CALCULATE_POLICY);
@@ -244,18 +279,19 @@ Fapi_AuthorizePolicy_Finish(
                            cleanup, hashAlg);
             }
 
+            /* Calculate the policy digest of the policy to be authorized. */
             r = ifapi_calculate_tree(context,
-                                     command->policyPath, policyHarness,
+                                     command->policyPath, policy,
                                      hashAlg, &digestIdx, &hashSize);
             return_try_again(r);
             goto_if_error(r, "Fapi calculate tree.", cleanup);
 
-            /* Compute aHash from policy digest and policyRef */
+            /* Compute the aHash from policy digest and policyRef */
             r = ifapi_crypto_hash_start(&cryptoContext, hashAlg);
             goto_if_error(r, "crypto hash start", cleanup);
 
             HASH_UPDATE_BUFFER(cryptoContext,
-                               &policyHarness->
+                               &policy->
                                policyDigests.digests[digestIdx].digest, hashSize,
                                r, cleanup);
             if (command->policyRef.size > 0) {
@@ -268,16 +304,21 @@ Fapi_AuthorizePolicy_Finish(
             goto_if_error(r, "crypto hash finish", cleanup);
 
             aHash.size = hashSize;
-            context->state = AUTHORIZE_NEW_KEY_SIGN_POLICY;
+            LOGBLOB_TRACE(&command->policyRef.buffer[0], command->policyRef.size, "policyRef");
+            LOGBLOB_TRACE(&aHash.buffer[0], aHash.size, "aHash");
+
             fallthrough;
 
         statecase(context->state, AUTHORIZE_NEW_KEY_SIGN_POLICY);
+            /* Perform the singing operation on the policy's aHash. */
             r = ifapi_key_sign(context, *keyObject, NULL,
                                &aHash, &signature, &publicKey, NULL);
             return_try_again(r);
             goto_if_error(r, "Fapi sign.", cleanup);
 
             SAFE_FREE(publicKey);
+
+            /* Store the signature results and cleanup remainters. */
             authorization->signature = *signature;
             authorization->policyRef = command->policyRef;
             strdup_check(authorization->type, "tpm", r, cleanup);
@@ -286,27 +327,31 @@ Fapi_AuthorizePolicy_Finish(
             SAFE_FREE(signature);
             ifapi_cleanup_ifapi_object(*keyObject);
 
-            ifapi_extend_authorization(policyHarness, authorization);
-            goto_if_null(policyHarness->policyAuthorizations,
+            /* Extend the authorization to the policy stored. */
+            ifapi_extend_authorization(policy, authorization);
+            goto_if_null(policy->policyAuthorizations,
                          "Out of memory", TSS2_FAPI_RC_MEMORY, cleanup);
-            context->state = AUTHORIZE_NEW_WRITE_POLICY;
+
             fallthrough;
 
         statecase(context->state, AUTHORIZE_NEW_WRITE_POLICY_PREPARE);
+            /* Store the newly authorized policy in the policy store. */
             r = ifapi_policy_store_store_async(&context->pstore, &context->io,
-                                               command->policyPath, policyHarness);
+                                               command->policyPath, policy);
             goto_if_error_reset_state(r, "Could not open: %s", cleanup,
                     command->policyPath);
+
             fallthrough;
 
         statecase(context->state, AUTHORIZE_NEW_WRITE_POLICY);
-            /* Save policy with computed digest */
             r = ifapi_policy_store_store_finish(&context->pstore, &context->io);
             return_try_again(r);
             return_if_error_reset_state(r, "write_finish failed");
+
             fallthrough;
 
         statecase(context->state, AUTHORIZE_NEW_CLEANUP)
+            /* Cleanup and reset the context state. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", cleanup);
 
@@ -317,13 +362,16 @@ Fapi_AuthorizePolicy_Finish(
     }
 
 cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
+    if (cryptoContext)
+        ifapi_crypto_hash_abort(&cryptoContext);
     ifapi_session_clean(context);
-    ifapi_cleanup_policy_harness(policyHarness);
+    ifapi_cleanup_policy(policy);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     SAFE_FREE(command->policyPath);
     SAFE_FREE(command->signingKeyPath);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

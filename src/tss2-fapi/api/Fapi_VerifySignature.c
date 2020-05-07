@@ -27,12 +27,12 @@
  *
  * Verifies a signature using a public key found in a keyPath.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] keyPath The path to the verification public key
- * @param [in] digest The that was signed. Must be already hashed
- * @param [in] digestSize the size of digest in bytes
- * @param [in] signature The signature to be verified
- * @param [in] signatureSize The size of signature in bytes
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] keyPath The path to the verification public key
+ * @param[in] digest The that was signed. Must be already hashed
+ * @param[in] digestSize the size of digest in bytes
+ * @param[in] signature The signature to be verified
+ * @param[in] signatureSize The size of signature in bytes
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, keyPath, signature, or
@@ -50,6 +50,11 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
  */
 TSS2_RC
 Fapi_VerifySignature(
@@ -87,7 +92,7 @@ Fapi_VerifySignature(
 
     return_if_error_reset_state(r, "Key_VerifySignature");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -97,12 +102,12 @@ Fapi_VerifySignature(
  *
  * Call Fapi_VerifySignature_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] keyPath The path to the verification public key
- * @param [in] digest The that was signed. Must be already hashed
- * @param [in] digestSize the size of digest in bytes
- * @param [in] signature The signature to be verified
- * @param [in] signatureSize The size of signature in bytes
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] keyPath The path to the verification public key
+ * @param[in] digest The that was signed. Must be already hashed
+ * @param[in] digestSize the size of digest in bytes
+ * @param[in] signature The signature to be verified
+ * @param[in] signatureSize The size of signature in bytes
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, keyPath, signature, or
@@ -120,6 +125,8 @@ Fapi_VerifySignature(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
  */
 TSS2_RC
 Fapi_VerifySignature_Async(
@@ -157,6 +164,7 @@ Fapi_VerifySignature_Async(
     r = ifapi_non_tpm_mode_init(context);
     return_if_error(r, "Initialize VerifySignature");
 
+    /* Copy parameters to context for use during _Finish. */
     uint8_t * signatureBuffer = malloc(signatureSize);
     uint8_t * digestBuffer = malloc(digestSize);
     goto_if_null2(signatureBuffer, "Out of memory", r, TSS2_FAPI_RC_MEMORY,
@@ -171,11 +179,16 @@ Fapi_VerifySignature_Async(
     command->digestSize = digestSize;
     memset(&command->key_object, 0, sizeof(IFAPI_OBJECT));
 
+    /* Load the key for verification from the keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, keyPath);
     goto_if_error2(r, "Could not open: %s", error_cleanup, keyPath);
-    LOG_TRACE("finsihed");
+
+    /* Initialize the context state for this operation. */
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(signatureBuffer);
     command->signature = NULL;
     SAFE_FREE(digestBuffer);
@@ -187,7 +200,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_VerifySignature_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -199,6 +212,11 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_SIGNATURE_VERIFICATION_FAILED if the signature could not
+ *         be verified
  */
 TSS2_RC
 Fapi_VerifySignature_Finish(
@@ -219,15 +237,13 @@ Fapi_VerifySignature_Finish(
     return_try_again(r);
     return_if_error_reset_state(r, "read_finish failed");
 
-    r = ifapi_initialize_object(context->esys,
-                                &command->key_object);
-    goto_if_error_reset_state(r, "Initialize key object", cleanup);
-
-    goto_if_error(r, "Deserialize key.", cleanup);
+    /* Verify the signature using a helper that tests all known signature schemes. */
     r = ifapi_verify_signature(&command->key_object, command->signature,
            command->signatureSize, command->digest, command->digestSize);
+    goto_if_error(r, "Verify signature.", cleanup);
 
 cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     if (command->key_object.objectType)
         ifapi_cleanup_ifapi_object(&command->key_object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
@@ -235,6 +251,6 @@ cleanup:
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     SAFE_FREE(command->signature);
     SAFE_FREE(command->digest);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

@@ -26,23 +26,30 @@
  *
  * Associates an arbitrary data blob with a given object.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path to the object the blob is associated with
- * @param [in] appData The blob to associate with the object. May be NULL
- * @param [in] appDataSize The size of appData in bytes. Must be 0 if appData is
- *             NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the object the blob is associated with
+ * @param[in] appData The blob to associate with the object. May be NULL
+ * @param[in] appDataSize The size of appData in bytes. Must be 0 if appData is
+ *            NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL or if appData
  *         is NULL and appDataSize is not 0.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if path does not map to a FAPI entity.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the updated data cannot be saved.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
  */
 TSS2_RC
 Fapi_SetAppData(
@@ -53,25 +60,11 @@ Fapi_SetAppData(
 {
     LOG_TRACE("called for context:%p", context);
 
-    TSS2_RC r, r2;
+    TSS2_RC r;
 
     /* Check for NULL parameters */
     check_not_null(context);
     check_not_null(path);
-
-    /* Check whether TCTI and ESYS are initialized */
-    return_if_null(context->esys, "Command can't be executed in none TPM mode.",
-                   TSS2_FAPI_RC_NO_TPM);
-
-    /* If the async state automata of FAPI shall be tested, then we must not set
-       the timeouts of ESYS to blocking mode.
-       During testing, the mssim tcti will ensure multiple re-invocations.
-       Usually however the synchronous invocations of FAPI shall instruct ESYS
-       to block until a result is available. */
-#ifndef TEST_FAPI_ASYNC
-    r = Esys_SetTimeout(context->esys, TSS2_TCTI_TIMEOUT_BLOCK);
-    return_if_error_reset_state(r, "Set Timeout to blocking");
-#endif /* TEST_FAPI_ASYNC */
 
     r = Fapi_SetAppData_Async(context, path, appData, appDataSize);
     return_if_error_reset_state(r, "SetAppData");
@@ -87,13 +80,9 @@ Fapi_SetAppData(
         r = Fapi_SetAppData_Finish(context);
     } while ((r & ~TSS2_RC_LAYER_MASK) == TSS2_BASE_RC_TRY_AGAIN);
 
-    /* Reset the ESYS timeout to non-blocking, immediate response. */
-    r2 = Esys_SetTimeout(context->esys, 0);
-    return_if_error(r2, "Set Timeout to non-blocking");
-
     return_if_error_reset_state(r, "SetAppData");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -103,23 +92,27 @@ Fapi_SetAppData(
  *
  * Call Fapi_SetAppData_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] path The path to the object the blob is associated with
- * @param [in] appData The blob to associate with the object. May be NULL
- * @param [in] appDataSize The size of appData in bytes. Must be 0 if appData is
- *             NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the object the blob is associated with
+ * @param[in] appData The blob to associate with the object. May be NULL
+ * @param[in] appDataSize The size of appData in bytes. Must be 0 if appData is
+ *            NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL or if appData
  *         is NULL and appDataSize is not 0.
  * @retval TSS2_FAPI_RC_BAD_CONTEXT: if context corruption is detected.
  * @retval TSS2_FAPI_RC_BAD_PATH: if path does not map to a FAPI entity.
- * @retval TSS2_FAPI_RC_STORAGE_ERROR: if the updated data cannot be saved.
  * @retval TSS2_FAPI_RC_BAD_SEQUENCE: if the context has an asynchronous
  *         operation already pending.
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
  */
 TSS2_RC
 Fapi_SetAppData_Async(
@@ -151,9 +144,7 @@ Fapi_SetAppData_Async(
     /* Helpful alias pointers */
     IFAPI_Path_SetDescription * command = &context->cmd.path_set_info;
 
-    r = ifapi_session_init(context);
-    return_if_error(r, "Initialize SetAppData");
-
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->object_path, path, r, error_cleanup);
 
     if (appDataSize > 0) {
@@ -167,14 +158,17 @@ Fapi_SetAppData_Async(
     }
     command->appData.size = appDataSize;
 
+    /* Load the current metadata for the object from keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, path);
     return_if_error2(r, "Could not open: %s", path);
 
+    /* Initialize the context state for this operation. */
     context->state = APP_DATA_SET_READ;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->object_path);
     SAFE_FREE(command->appData.buffer);
     return r;
@@ -184,7 +178,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_SetAppData_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -196,6 +190,10 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 Fapi_SetAppData_Finish(
@@ -219,6 +217,7 @@ Fapi_SetAppData_Finish(
             return_try_again(r);
             return_if_error_reset_state(r, "read_finish failed");
 
+            /* Depending on the object type get the correct appData pointer. */
             switch (object->objectType) {
             case IFAPI_KEY_OBJ:
                 objAppData = &object->misc.key.appData;
@@ -237,13 +236,12 @@ Fapi_SetAppData_Finish(
             objAppData->size = command->appData.size;
             objAppData->buffer = command->appData.buffer;
 
-            /* Prepare writing of object */
+            /* Prepare (over-)writing of object */
             r = ifapi_keystore_store_async(&context->keystore, &context->io,
                                            command->object_path, object);
             goto_if_error_reset_state(r, "Could not open: %sh", error_cleanup,
                                       command->object_path);
 
-            context->state = APP_DATA_SET_WRITE;
             fallthrough;
 
         statecase(context->state, APP_DATA_SET_WRITE);
@@ -261,11 +259,12 @@ Fapi_SetAppData_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     ifapi_cleanup_ifapi_object(object);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     SAFE_FREE(command->object_path);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

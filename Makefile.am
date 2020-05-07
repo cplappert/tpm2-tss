@@ -24,7 +24,7 @@ MAINTAINERCLEANFILES = \
     $(DIST_ARCHIVES) \
     AUTHORS
 
-GITIGNOREFILES = \
+TSS_GITIGNOREFILES = \
     $(GITIGNORE_MAINTAINERCLEANFILES_TOPLEVEL) \
     $(GITIGNORE_MAINTAINERCLEANFILES_MAKEFILE_IN) \
     $(GITIGNORE_MAINTAINERCLEANFILES_M4_LIBTOOL) \
@@ -49,6 +49,7 @@ GITIGNOREFILES = \
     m4/ax_valgrind_check.m4 \
     m4/pkg.m4
 
+GITIGNOREFILES = ""
 ### Add ax_* rules ###
 # ax_code_coverage
 if AUTOCONF_CODE_COVERAGE_2019_01_06
@@ -58,7 +59,8 @@ distclean-local: code-coverage-dist-clean
 else
 @CODE_COVERAGE_RULES@
 endif
-CODE_COVERAGE_DIRECTORY = $(top_builddir)/src
+GITIGNOREFILES += $(TSS_GITIGNOREFILES)
+CODE_COVERAGE_DIRECTORY = $(top_builddir)/src $(top_builddir)/test
 
 # ax_valgrind_check
 @VALGRIND_CHECK_RULES@
@@ -188,6 +190,7 @@ endif #DOXYMAN
 include src_vars.mk
 
 # Add test definitions
+AM_DISTCHECK_CONFIGURE_FLAGS="--enable-debug"
 include Makefile-test.am
 
 # Add fuzz definitions
@@ -442,7 +445,9 @@ EXTRA_DIST +=  \
     test/data/fapi/policy/pol_nv.json \
     test/data/fapi/policy/pol_nv_written.json \
     test/data/fapi/policy/pol_signed.json \
+    test/data/fapi/policy/pol_signed_ecc.json \
     test/data/fapi/policy/pol_authorize.json \
+    test/data/fapi/policy/pol_authorize_outer.json \
     test/data/fapi/policy/pol_authorize_nv.json \
     test/data/fapi/policy/pol_secret.json \
     test/data/fapi/policy/pol_password.json \

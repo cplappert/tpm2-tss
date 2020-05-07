@@ -20,6 +20,14 @@
 #include "util/log.h"
 #include "util/aux_util.h"
 
+
+/** Serialize a character string to json.
+ *
+ * @param[in] in value to be serialized.
+ * @param[out] jso pointer to the json object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
+ */
 TSS2_RC
 ifapi_json_char_serialize(
     const char *in,
@@ -41,6 +49,7 @@ ifapi_json_char_serialize(
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_DIGEST.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_UINT8_ARY_serialize(const UINT8_ARY *in, json_object **jso)
@@ -62,78 +71,6 @@ ifapi_json_UINT8_ARY_serialize(const UINT8_ARY *in, json_object **jso)
     return TSS2_RC_SUCCESS;
 }
 
-/** Serialize value of type IFAPI_ENCRYPTED_DATA to json.
- *
- * @param[in] in value to be serialized.
- * @param[out] jso pointer to the json object.
- * @retval TSS2_RC_SUCCESS if the function call was a success.
- * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
- * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_ENCRYPTED_DATA.
- */
-TSS2_RC
-ifapi_json_IFAPI_ENCRYPTED_DATA_serialize(const IFAPI_ENCRYPTED_DATA *in,
-        json_object **jso)
-{
-    return_if_null(in, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
-
-    TSS2_RC r;
-    json_object *jso2;
-
-    if (*jso == NULL)
-        *jso = json_object_new_object();
-    jso2 = NULL;
-    r = ifapi_json_UINT32_serialize(in->type, &jso2);
-    return_if_error(r, "Serialize UINT32");
-
-    json_object_object_add(*jso, "type", jso2);
-    jso2 = NULL;
-    r = ifapi_json_TPM2B_NAME_serialize(&in->key_name, &jso2);
-    return_if_error(r, "Serialize TPM2B_NAME");
-
-    json_object_object_add(*jso, "key_name", jso2);
-    jso2 = NULL;
-    r = ifapi_json_UINT8_ARY_serialize(&in->cipher, &jso2);
-    return_if_error(r, "Serialize UINT8_ARY");
-
-    json_object_object_add(*jso, "cipher", jso2);
-
-    if (in->sym_key_size > 0) {
-        /* A sealed symmetric key is used for encryption */
-        jso2 = NULL;
-        r = ifapi_json_TPM2B_PUBLIC_serialize(&in->sym_public, &jso2);
-        return_if_error(r, "Serialize TPM2B_PUBLIC");
-
-        json_object_object_add(*jso, "sym_public", jso2);
-
-        jso2 = NULL;
-        r = ifapi_json_UINT8_ARY_serialize(&in->sym_private, &jso2);
-        return_if_error(r, "Serialize UINT8_ARY");
-
-        json_object_object_add(*jso, "sym_private", jso2);
-
-        jso2 = NULL;
-        r = ifapi_json_UINT32_serialize(in->sym_key_size, &jso2);
-        return_if_error(r, "Serialize UINT32");
-
-        json_object_object_add(*jso, "sym_key_size", jso2);
-
-        jso2 = NULL;
-        r = ifapi_json_TPM2B_DIGEST_serialize(&in->sym_iv, &jso2);
-        return_if_error(r, "Serialize iv");
-
-        json_object_object_add(*jso, "sym_iv", jso2);
-
-        if (in->sym_policy_harness.policy) {
-            jso2 = NULL;
-            r = ifapi_json_TPMS_POLICY_HARNESS_serialize(&in->sym_policy_harness, &jso2);
-            return_if_error(r, "Serialize policy");
-
-            json_object_object_add(*jso, "policy", jso2);
-        }
-    }
-    return TSS2_RC_SUCCESS;
-}
-
 /** Serialize value of type IFAPI_KEY to json.
  *
  * @param[in] in value to be serialized.
@@ -141,6 +78,7 @@ ifapi_json_IFAPI_ENCRYPTED_DATA_serialize(const IFAPI_ENCRYPTED_DATA *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_KEY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_KEY_serialize(const IFAPI_KEY *in, json_object **jso)
@@ -218,11 +156,15 @@ ifapi_json_IFAPI_KEY_serialize(const IFAPI_KEY *in, json_object **jso)
     return_if_error(r, "Serialize char");
 
     json_object_object_add(*jso, "certificate", jso2);
-    jso2 = NULL;
-    r = ifapi_json_TPMT_SIG_SCHEME_serialize(&in->signing_scheme, &jso2);
-    return_if_error(r, "Serialize TPMT_SIG_SCHEME");
 
-    json_object_object_add(*jso, "signing_scheme", jso2);
+    if (in->public.publicArea.type != TPM2_ALG_KEYEDHASH) {
+        /* Keyed hash objects to not need a signing scheme. */
+        jso2 = NULL;
+        r = ifapi_json_TPMT_SIG_SCHEME_serialize(&in->signing_scheme, &jso2);
+        return_if_error(r, "Serialize TPMT_SIG_SCHEME");
+
+        json_object_object_add(*jso, "signing_scheme", jso2);
+    }
     jso2 = NULL;
     r = ifapi_json_TPM2B_NAME_serialize(&in->name, &jso2);
     return_if_error(r, "Serialize TPM2B_NAME");
@@ -238,6 +180,7 @@ ifapi_json_IFAPI_KEY_serialize(const IFAPI_KEY *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_EXT_PUB_KEY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_EXT_PUB_KEY_serialize(const IFAPI_EXT_PUB_KEY *in,
@@ -280,6 +223,7 @@ ifapi_json_IFAPI_EXT_PUB_KEY_serialize(const IFAPI_EXT_PUB_KEY *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_NV.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_NV_serialize(const IFAPI_NV *in, json_object **jso)
@@ -351,6 +295,7 @@ ifapi_json_IFAPI_NV_serialize(const IFAPI_NV *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_NV.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_HIERARCHY_serialize(const IFAPI_HIERARCHY *in, json_object **jso)
@@ -390,6 +335,7 @@ ifapi_json_IFAPI_HIERARCHY_serialize(const IFAPI_HIERARCHY *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type FAPI_QUOTE_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_FAPI_QUOTE_INFO_serialize(const FAPI_QUOTE_INFO *in,
@@ -422,7 +368,8 @@ ifapi_json_FAPI_QUOTE_INFO_serialize(const FAPI_QUOTE_INFO *in,
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
- * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_POLICY_HARNESS.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_DUPLICATE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_DUPLICATE_serialize(const IFAPI_DUPLICATE *in,
@@ -463,6 +410,13 @@ ifapi_json_IFAPI_DUPLICATE_serialize(const IFAPI_DUPLICATE *in,
     return_if_error(r, "Serialize TPM2B_PUBLIC");
 
     json_object_object_add(*jso, "public_parent", jso2);
+    if (in->policy) {
+        jso2 = NULL;
+        r = ifapi_json_TPMS_POLICY_serialize(in->policy, &jso2);
+        return_if_error(r, "Serialize policy");
+
+        json_object_object_add(*jso, "policy", jso2);
+    }
 
     return TSS2_RC_SUCCESS;
 }
@@ -475,7 +429,6 @@ ifapi_json_IFAPI_DUPLICATE_serialize(const IFAPI_DUPLICATE *in,
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2_HANDLE.
  */
-
 TSS2_RC
 ifapi_json_IFAPI_OBJECT_TYPE_CONSTANT_serialize(const IFAPI_OBJECT_TYPE_CONSTANT
         in, json_object **jso)
@@ -495,6 +448,8 @@ ifapi_json_IFAPI_OBJECT_TYPE_CONSTANT_serialize(const IFAPI_OBJECT_TYPE_CONSTANT
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_OBJECT.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_OBJECT_serialize(const IFAPI_OBJECT *in,
@@ -551,20 +506,20 @@ ifapi_json_IFAPI_OBJECT_serialize(const IFAPI_OBJECT *in,
         return_error(TSS2_FAPI_RC_GENERAL_FAILURE, "Invalid call get_json");
     }
 
-    if (in->policy_harness) {
+    if (in->policy) {
         jso2 = NULL;
-        r = ifapi_json_TPMS_POLICY_HARNESS_serialize(in->policy_harness, &jso2);
+        r = ifapi_json_TPMS_POLICY_serialize(in->policy, &jso2);
         return_if_error(r, "Serialize policy");
 
-        json_object_object_add(*jso, "policy_harness", jso2);
+        json_object_object_add(*jso, "policy", jso2);
     }
 
-    if (in->policy_harness) {
+    if (in->policy) {
         jso2 = NULL;
-        r = ifapi_json_TPMS_POLICY_HARNESS_serialize(in->policy_harness, &jso2);
+        r = ifapi_json_TPMS_POLICY_serialize(in->policy, &jso2);
         return_if_error(r, "Serialize policy");
 
-        json_object_object_add(*jso, "policy_harness", jso2);
+        json_object_object_add(*jso, "policy", jso2);
     }
     return TSS2_RC_SUCCESS;
 }
@@ -576,6 +531,7 @@ ifapi_json_IFAPI_OBJECT_serialize(const IFAPI_OBJECT *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_CAP_INFO_serialize(const IFAPI_CAP_INFO *in, json_object **jso)
@@ -602,7 +558,6 @@ ifapi_json_IFAPI_CAP_INFO_serialize(const IFAPI_CAP_INFO *in, json_object **jso)
     return TSS2_RC_SUCCESS;
 }
 
-
 /** Serialize value of type IFAPI_INFO to json.
  *
  * @param[in] in value to be serialized.
@@ -610,6 +565,7 @@ ifapi_json_IFAPI_CAP_INFO_serialize(const IFAPI_CAP_INFO *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_INFO_serialize(const IFAPI_INFO *in, json_object **jso)
@@ -676,7 +632,7 @@ static IFAPI_EVENT_TYPE_ASSIGN serialize_IFAPI_EVENT_TYPE_tab[] = {
 /** Get json object for a constant, if a variable is actually of type IFAPI_EVENT_TYPE.
  *
  * @param[in] in binary value of constant.
- * @param[out] jso object with text representing the constant.
+ * @param[out] str_jso object with text representing the constant.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the constant is not of type IFAPI_EVENT_TYPE.
@@ -707,6 +663,7 @@ ifapi_json_IFAPI_EVENT_TYPE_serialize_txt(
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_TSS_EVENT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_TSS_EVENT_serialize(const IFAPI_TSS_EVENT *in,
@@ -724,10 +681,14 @@ ifapi_json_IFAPI_TSS_EVENT_serialize(const IFAPI_TSS_EVENT *in,
     return_if_error(r, "Serialize TPM2B_EVENT");
 
     json_object_object_add(*jso, "data", jso2);
+
     if (in->event) {
-        jso2 = NULL;
-        r = ifapi_json_char_serialize(in->event, &jso2);
-        return_if_error(r, "Serialize char");
+        /* The in->event field is somewhat special. Its an arbitrary json
+           object that shall be serialized under the event field. Thus we
+           first have to deserialize the string before we can add it to
+           the data structure. */
+        jso2 = json_tokener_parse(in->event);
+        return_if_null(jso2, "Event is not valid JSON.", TSS2_FAPI_RC_BAD_VALUE);
 
         json_object_object_add(*jso, "event", jso2);
     }
@@ -741,6 +702,7 @@ ifapi_json_IFAPI_TSS_EVENT_serialize(const IFAPI_TSS_EVENT *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_IMA_EVENT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_IMA_EVENT_serialize(const IFAPI_IMA_EVENT *in,
@@ -770,10 +732,12 @@ ifapi_json_IFAPI_IMA_EVENT_serialize(const IFAPI_IMA_EVENT *in,
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the event.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_EVENT_UNION.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_EVENT_UNION_serialize(const IFAPI_EVENT_UNION *in,
@@ -802,6 +766,7 @@ ifapi_json_IFAPI_EVENT_UNION_serialize(const IFAPI_EVENT_UNION *in,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type IFAPI_EVENT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_IFAPI_EVENT_serialize(const IFAPI_EVENT *in, json_object **jso)

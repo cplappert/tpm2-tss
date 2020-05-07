@@ -23,21 +23,25 @@
 #define SIGN_TEMPLATE  "sign,noDa"
 #define PASSWORD NULL
 
-/** Test the FAPI functions for key creation and usage.
+#define NV_SIZE 4
+
+/** Test the FAPI functions for NV writing and key usage.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
  *  - Fapi_CreateKey()
+ *  - Fapi_NvWrite()
+ *  - Fapi_Import()
  *  - Fapi_Sign()
  *  - Fapi_Delete()
+ *
+ * Tested Policies:
+ *  - PolicyNv
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE
  * @retval EXIT_SUCCESS
  */
-
-#define NV_SIZE 4
-
 int
 test_fapi_key_create_policy_nv_sign(FAPI_CONTEXT *context)
 {

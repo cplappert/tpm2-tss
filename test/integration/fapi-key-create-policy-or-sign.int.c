@@ -8,8 +8,10 @@
 #include <config.h>
 #endif
 
+#include <stdbool.h>
 #include <stdlib.h>
 #include <stdio.h>
+#include <string.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <unistd.h>
@@ -25,7 +27,9 @@
 #define PASSWORD NULL
 #define SIGN_TEMPLATE  "sign,noDa"
 
-TSS2_RC
+static bool cb_called = false;
+
+static TSS2_RC
 branch_callback(
     FAPI_CONTEXT *context,
     char   const *description,
@@ -35,22 +39,41 @@ branch_callback(
     void         *userData)
 {
     (void) description;
-    (void) numBranches;
-    (void) branchNames;
     (void) userData;
 
-    *selectedBranch = 1;
+    if (numBranches != 2) {
+        LOG_ERROR("Wrong number of branches");
+        return TSS2_FAPI_RC_GENERAL_FAILURE;
+    }
+
+    if (!strcmp(branchNames[0], "branch0"))
+        *selectedBranch = 0;
+    else if (!strcmp(branchNames[1], "branch0"))
+        *selectedBranch = 1;
+    else {
+        LOG_ERROR("BranchName not found. Got \"%s\" and \"%s\"",
+                  branchNames[0], branchNames[1]);
+        return TSS2_FAPI_RC_GENERAL_FAILURE;
+    }
+
+    cb_called = true;
     return TSS2_RC_SUCCESS;
 }
 
 
-/** Test the FAPI functions for key creation and usage.
+/** Test the FAPI for PolicyOr using signing.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
+ *  - Fapi_Import()
  *  - Fapi_CreateKey()
+ *  - Fapi_SetBranchCB()
  *  - Fapi_Sign()
  *  - Fapi_Delete()
+ *
+ * Tested Policies:
+ *  - PolicyOr
+ *  - PolicyPcr
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE
@@ -124,6 +147,12 @@ test_fapi_key_create_policy_or_sign(FAPI_CONTEXT *context)
     SAFE_FREE(json_policy);
     SAFE_FREE(signature);
     SAFE_FREE(publicKey);
+
+    if (!cb_called) {
+        LOG_ERROR("Branch selection callback was not called.");
+        return EXIT_FAILURE;
+    }
+
     return EXIT_SUCCESS;
 
 error:

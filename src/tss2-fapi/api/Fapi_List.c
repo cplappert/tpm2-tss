@@ -29,9 +29,9 @@
  * in a list of complete paths from the root with the values separated by
  * colons.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] searchPath The path that identifies the root of the search
- * @param [out] pathList A colon-separated list of all objects in the root path
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] searchPath The path that identifies the root of the search
+ * @param[out] pathList A colon-separated list of all objects in the root path
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, searchPath, pathlist is
@@ -43,6 +43,8 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
  */
 TSS2_RC
 Fapi_List(
@@ -75,7 +77,7 @@ Fapi_List(
 
     return_if_error_reset_state(r, "Entities_List");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -88,8 +90,8 @@ Fapi_List(
  * Call Fapi_List_Finish to finish the execution of this command.
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] searchPath The path that identifies the root of the search
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] searchPath The path that identifies the root of the search
  *
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or searchPath is
  *         NULL.
@@ -121,10 +123,14 @@ Fapi_List_Async(
     r = ifapi_non_tpm_mode_init(context);
     return_if_error(r, "Initialize List");
 
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->searchPath, searchPath, r, error_cleanup);
-    LOG_TRACE("finsihed");
+
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->searchPath);
     return r;
 }
@@ -133,8 +139,8 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_List_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] pathList A colon-separated list of all objects in the root path
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] pathList A colon-separated list of all objects in the root path
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or pathList is NULL.
@@ -146,6 +152,8 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
  */
 TSS2_RC
 Fapi_List_Finish(
@@ -166,9 +174,10 @@ Fapi_List_Finish(
     /* Helpful alias pointers */
     IFAPI_Entities_List * command = &context->cmd.Entities_List;
 
+    /* Retrieve the objects along the search path. */
     r = ifapi_keystore_list_all(&context->keystore, command->searchPath,
                                 &pathArray, &numPaths);
-    return_if_error(r, "get entities.");
+    goto_if_error(r, "get entities.", cleanup);
 
     if (numPaths == 0)
         goto cleanup;
@@ -184,17 +193,21 @@ Fapi_List_Finish(
     (*pathList)[0] = '\0';
     (*pathList)[sizePathList + numPaths - 1] = '\0';
 
+    /* Concatenate the path entries to the output string. */
     for (size_t i = 0; i < numPaths; i++) {
         strcat(*pathList, pathArray[i]);
         if (i < numPaths - 1)
             strcat(*pathList, IFAPI_LIST_DELIM);
     }
 
+    LOG_TRACE("finished");
+
 cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     SAFE_FREE(command->searchPath);
     if (numPaths == 0 && (r == TSS2_RC_SUCCESS)) {
-        return_error2(TSS2_FAPI_RC_PATH_NOT_FOUND,
-                      "Path not found: %s", command->searchPath);
+        LOG_ERROR("Path not found: %s", command->searchPath);
+        r = TSS2_FAPI_RC_PATH_NOT_FOUND;
     }
     if (numPaths > 0) {
         for (size_t i = 0; i < numPaths; i++){
@@ -202,6 +215,5 @@ cleanup:
         }
     }
     SAFE_FREE(pathArray);
-    LOG_TRACE("finsihed");
     return r;
 }

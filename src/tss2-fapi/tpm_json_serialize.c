@@ -28,7 +28,8 @@
 
 /** Serialize a TPMS_EMPTY.
  *
- * @param[in] in Structure to be serialized.
+ * @param[in] in not used.
+ * @param[in] jso not used.
  * @retval TSS2_RC_SUCCESS is always returnde.
  */
 TSS2_RC
@@ -69,9 +70,7 @@ ifapi_json_pcr_select_serialize(
         i2 = i1 + TPM2_PCR_FIRST;
         if (pcrSelect[i2 / 8] & (BYTE)(1 << (i2 % 8))) {
             jso2 = json_object_new_int(i2);
-            if (jso2 == NULL) {
-                return_if_null(jso2, "Out of memory.", TSS2_FAPI_RC_MEMORY);
-            }
+            return_if_null(jso2, "Out of memory.", TSS2_FAPI_RC_MEMORY);
             json_object_array_add(*jso, jso2);
         }
     }
@@ -921,7 +920,6 @@ ifapi_json_TPMA_LOCALITY_serialize(const TPMA_LOCALITY in, json_object **jso)
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the constant is not of type TPMA_CC.
  */
-
 TSS2_RC
 ifapi_json_TPMA_CC_serialize(const TPMA_CC in, json_object **jso)
 {
@@ -949,17 +947,17 @@ ifapi_json_TPMA_CC_serialize(const TPMA_CC in, json_object **jso)
 
         json_object_object_add(*jso, tab[i].name, jso_bit);
     }
-    jso_bit_idx =  json_object_new_int64((TPMA_CC_COMMANDINDEX_MASK & input) >> 0);
+    jso_bit_idx = json_object_new_int64((TPMA_CC_COMMANDINDEX_MASK & input) >> 0);
     return_if_null(jso_bit_idx, "Out of memory.", TSS2_FAPI_RC_MEMORY);
 
     json_object_object_add(*jso, "commandIndex", jso_bit_idx);
 
-    jso_bit_idx =  json_object_new_int64((TPMA_CC_CHANDLES_MASK & input) >> 25);
+    jso_bit_idx = json_object_new_int64((TPMA_CC_CHANDLES_MASK & input) >> 25);
     return_if_null(jso_bit_idx, "Out of memory.", TSS2_FAPI_RC_MEMORY);
 
     json_object_object_add(*jso, "cHandles", jso_bit_idx);
 
-    jso_bit_idx =  json_object_new_int64((TPMA_CC_RES_MASK & input) >> 30);
+    jso_bit_idx = json_object_new_int64((TPMA_CC_RES_MASK & input) >> 30);
     return_if_null(jso_bit_idx, "Out of memory.", TSS2_FAPI_RC_MEMORY);
 
     json_object_object_add(*jso, "Res", jso_bit_idx);
@@ -971,6 +969,9 @@ ifapi_json_TPMA_CC_serialize(const TPMA_CC in, json_object **jso)
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_YES_NO_serialize(const TPMI_YES_NO in, json_object **jso)
@@ -990,6 +991,9 @@ ifapi_json_TPMI_YES_NO_serialize(const TPMI_YES_NO in, json_object **jso)
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_RH_HIERARCHY_serialize(const TPMI_RH_HIERARCHY in,
@@ -1039,6 +1043,9 @@ ifapi_json_TPMI_RH_NV_INDEX_serialize(const TPMI_RH_NV_INDEX in,
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_HASH_serialize(const TPMI_ALG_HASH in, json_object **jso)
@@ -1052,6 +1059,9 @@ ifapi_json_TPMI_ALG_HASH_serialize(const TPMI_ALG_HASH in, json_object **jso)
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_SYM_OBJECT_serialize(const TPMI_ALG_SYM_OBJECT in,
@@ -1065,6 +1075,9 @@ ifapi_json_TPMI_ALG_SYM_OBJECT_serialize(const TPMI_ALG_SYM_OBJECT in,
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_SYM_MODE_serialize(const TPMI_ALG_SYM_MODE in,
@@ -1079,6 +1092,9 @@ ifapi_json_TPMI_ALG_SYM_MODE_serialize(const TPMI_ALG_SYM_MODE in,
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_KDF_serialize(const TPMI_ALG_KDF in, json_object **jso)
@@ -1092,6 +1108,9 @@ ifapi_json_TPMI_ALG_KDF_serialize(const TPMI_ALG_KDF in, json_object **jso)
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_SIG_SCHEME_serialize(const TPMI_ALG_SIG_SCHEME in,
@@ -1107,6 +1126,7 @@ ifapi_json_TPMI_ALG_SIG_SCHEME_serialize(const TPMI_ALG_SIG_SCHEME in,
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the HA object.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
@@ -1157,6 +1177,7 @@ ifapi_json_TPMU_HA_serialize(const TPMU_HA *in, UINT32 selector,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_HA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_HA_serialize(const TPMT_HA *in, json_object **jso)
@@ -1189,6 +1210,7 @@ ifapi_json_TPMT_HA_serialize(const TPMT_HA *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_DIGEST.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_DIGEST_serialize(const TPM2B_DIGEST *in, json_object **jso)
@@ -1218,18 +1240,19 @@ ifapi_json_TPM2B_DIGEST_serialize(const TPM2B_DIGEST *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_DATA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_DATA_serialize(const TPM2B_DATA *in, json_object **jso)
 {
     return_if_null(in, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
-    if (in->size > sizeof(TPMT_HA)) {
+    if (in->size > sizeof(TPMU_HA)) {
         LOG_ERROR("Too many bytes for array (%"PRIuPTR" > %"PRIuPTR" = sizeof(TPMT_HA))",
                   (size_t)in->size, (size_t)sizeof(TPMT_HA));
         return TSS2_FAPI_RC_BAD_VALUE;
     }
-    char hex_string[((size_t)in->size)*2+1];
+    char hex_string[sizeof(TPMT_HA)*2+1];
 
     for (size_t i = 0, off = 0; i < in->size; i++, off+=2)
         sprintf(&hex_string[off], "%02x", in->buffer[i]);
@@ -1247,6 +1270,7 @@ ifapi_json_TPM2B_DATA_serialize(const TPM2B_DATA *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_NONCE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_NONCE_serialize(const TPM2B_NONCE *in, json_object **jso)
@@ -1261,6 +1285,7 @@ ifapi_json_TPM2B_NONCE_serialize(const TPM2B_NONCE *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_OPERAND.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_OPERAND_serialize(const TPM2B_OPERAND *in, json_object **jso)
@@ -1275,6 +1300,7 @@ ifapi_json_TPM2B_OPERAND_serialize(const TPM2B_OPERAND *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_EVENT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_EVENT_serialize(const TPM2B_EVENT *in, json_object **jso)
@@ -1304,6 +1330,7 @@ ifapi_json_TPM2B_EVENT_serialize(const TPM2B_EVENT *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_MAX_NV_BUFFER.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_MAX_NV_BUFFER_serialize(const TPM2B_MAX_NV_BUFFER *in, json_object **jso)
@@ -1333,6 +1360,7 @@ ifapi_json_TPM2B_MAX_NV_BUFFER_serialize(const TPM2B_MAX_NV_BUFFER *in, json_obj
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_NAME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_NAME_serialize(const TPM2B_NAME *in, json_object **jso)
@@ -1362,6 +1390,7 @@ ifapi_json_TPM2B_NAME_serialize(const TPM2B_NAME *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_TK_CREATION.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_TK_CREATION_serialize(const TPMT_TK_CREATION *in, json_object **jso)
@@ -1374,7 +1403,7 @@ ifapi_json_TPMT_TK_CREATION_serialize(const TPMT_TK_CREATION *in, json_object **
         *jso = json_object_new_object ();
     if (in != NULL && in->tag != TPM2_ST_CREATION) {
         LOG_ERROR("BAD VALUE %"PRIuPTR" != %"PRIuPTR,(size_t)in->tag,(size_t)TPM2_ST_CREATION);
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     jso2 = NULL;
     r = ifapi_json_TPM2_ST_serialize(in->tag, &jso2);
@@ -1401,6 +1430,7 @@ ifapi_json_TPMT_TK_CREATION_serialize(const TPMT_TK_CREATION *in, json_object **
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_ALG_PROPERTY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ALG_PROPERTY_serialize(const TPMS_ALG_PROPERTY *in, json_object **jso)
@@ -1431,6 +1461,7 @@ ifapi_json_TPMS_ALG_PROPERTY_serialize(const TPMS_ALG_PROPERTY *in, json_object 
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_TAGGED_PROPERTY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_TAGGED_PROPERTY_serialize(const TPMS_TAGGED_PROPERTY *in, json_object **jso)
@@ -1461,6 +1492,7 @@ ifapi_json_TPMS_TAGGED_PROPERTY_serialize(const TPMS_TAGGED_PROPERTY *in, json_o
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_CC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_CC_serialize(const TPML_CC *in, json_object **jso)
@@ -1493,6 +1525,7 @@ ifapi_json_TPML_CC_serialize(const TPML_CC *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_CCA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_CCA_serialize(const TPML_CCA *in, json_object **jso)
@@ -1525,6 +1558,7 @@ ifapi_json_TPML_CCA_serialize(const TPML_CCA *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_HANDLE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_HANDLE_serialize(const TPML_HANDLE *in, json_object **jso)
@@ -1557,6 +1591,7 @@ ifapi_json_TPML_HANDLE_serialize(const TPML_HANDLE *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_DIGEST_VALUES.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_DIGEST_VALUES_serialize(const TPML_DIGEST_VALUES *in, json_object **jso)
@@ -1589,6 +1624,7 @@ ifapi_json_TPML_DIGEST_VALUES_serialize(const TPML_DIGEST_VALUES *in, json_objec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_PCR_SELECTION.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_PCR_SELECTION_serialize(const TPML_PCR_SELECTION *in, json_object **jso)
@@ -1621,6 +1657,7 @@ ifapi_json_TPML_PCR_SELECTION_serialize(const TPML_PCR_SELECTION *in, json_objec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_ALG_PROPERTY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_ALG_PROPERTY_serialize(const TPML_ALG_PROPERTY *in, json_object **jso)
@@ -1653,6 +1690,7 @@ ifapi_json_TPML_ALG_PROPERTY_serialize(const TPML_ALG_PROPERTY *in, json_object 
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_TAGGED_TPM_PROPERTY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_TAGGED_TPM_PROPERTY_serialize(const TPML_TAGGED_TPM_PROPERTY *in, json_object **jso)
@@ -1685,6 +1723,7 @@ ifapi_json_TPML_TAGGED_TPM_PROPERTY_serialize(const TPML_TAGGED_TPM_PROPERTY *in
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_TAGGED_PCR_PROPERTY.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_TAGGED_PCR_PROPERTY_serialize(const TPML_TAGGED_PCR_PROPERTY *in, json_object **jso)
@@ -1717,6 +1756,7 @@ ifapi_json_TPML_TAGGED_PCR_PROPERTY_serialize(const TPML_TAGGED_PCR_PROPERTY *in
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPML_ECC_CURVE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_ECC_CURVE_serialize(const TPML_ECC_CURVE *in, json_object **jso)
@@ -1746,10 +1786,12 @@ ifapi_json_TPML_ECC_CURVE_serialize(const TPML_ECC_CURVE *in, json_object **jso)
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the capabilities.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_CAPABILITIES.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_CAPABILITIES_serialize(const TPMU_CAPABILITIES *in, UINT32 selector, json_object **jso)
@@ -1787,6 +1829,7 @@ ifapi_json_TPMU_CAPABILITIES_serialize(const TPMU_CAPABILITIES *in, UINT32 selec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_CAPABILITY_DATA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CAPABILITY_DATA_serialize(const TPMS_CAPABILITY_DATA *in, json_object **jso)
@@ -1817,6 +1860,7 @@ ifapi_json_TPMS_CAPABILITY_DATA_serialize(const TPMS_CAPABILITY_DATA *in, json_o
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_CLOCK_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CLOCK_INFO_serialize(const TPMS_CLOCK_INFO *in, json_object **jso)
@@ -1857,6 +1901,7 @@ ifapi_json_TPMS_CLOCK_INFO_serialize(const TPMS_CLOCK_INFO *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_TIME_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_TIME_INFO_serialize(const TPMS_TIME_INFO *in, json_object **jso)
@@ -1887,6 +1932,7 @@ ifapi_json_TPMS_TIME_INFO_serialize(const TPMS_TIME_INFO *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_TIME_ATTEST_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_TIME_ATTEST_INFO_serialize(const TPMS_TIME_ATTEST_INFO *in, json_object **jso)
@@ -1917,6 +1963,7 @@ ifapi_json_TPMS_TIME_ATTEST_INFO_serialize(const TPMS_TIME_ATTEST_INFO *in, json
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_CERTIFY_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CERTIFY_INFO_serialize(const TPMS_CERTIFY_INFO *in, json_object **jso)
@@ -1947,6 +1994,7 @@ ifapi_json_TPMS_CERTIFY_INFO_serialize(const TPMS_CERTIFY_INFO *in, json_object 
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_QUOTE_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_QUOTE_INFO_serialize(const TPMS_QUOTE_INFO *in, json_object **jso)
@@ -1977,6 +2025,7 @@ ifapi_json_TPMS_QUOTE_INFO_serialize(const TPMS_QUOTE_INFO *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_COMMAND_AUDIT_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_COMMAND_AUDIT_INFO_serialize(const TPMS_COMMAND_AUDIT_INFO *in, json_object **jso)
@@ -2017,6 +2066,7 @@ ifapi_json_TPMS_COMMAND_AUDIT_INFO_serialize(const TPMS_COMMAND_AUDIT_INFO *in, 
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SESSION_AUDIT_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SESSION_AUDIT_INFO_serialize(const TPMS_SESSION_AUDIT_INFO *in, json_object **jso)
@@ -2047,6 +2097,7 @@ ifapi_json_TPMS_SESSION_AUDIT_INFO_serialize(const TPMS_SESSION_AUDIT_INFO *in, 
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_CREATION_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CREATION_INFO_serialize(const TPMS_CREATION_INFO *in, json_object **jso)
@@ -2077,6 +2128,7 @@ ifapi_json_TPMS_CREATION_INFO_serialize(const TPMS_CREATION_INFO *in, json_objec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_NV_CERTIFY_INFO.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_NV_CERTIFY_INFO_serialize(const TPMS_NV_CERTIFY_INFO *in, json_object **jso)
@@ -2109,6 +2161,9 @@ ifapi_json_TPMS_NV_CERTIFY_INFO_serialize(const TPMS_NV_CERTIFY_INFO *in, json_o
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ST_ATTEST_serialize(const TPMI_ST_ATTEST in, json_object **jso)
@@ -2123,10 +2178,12 @@ ifapi_json_TPMI_ST_ATTEST_serialize(const TPMI_ST_ATTEST in, json_object **jso)
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the attest.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_ATTEST.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_ATTEST_serialize(const TPMU_ATTEST *in, UINT32 selector, json_object **jso)
@@ -2160,6 +2217,7 @@ ifapi_json_TPMU_ATTEST_serialize(const TPMU_ATTEST *in, UINT32 selector, json_ob
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_ATTEST.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ATTEST_serialize(const TPMS_ATTEST *in, json_object **jso)
@@ -2228,6 +2286,7 @@ ifapi_json_TPMI_AES_KEY_BITS_serialize(const TPMI_AES_KEY_BITS in, json_object *
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the symmetric algorithm.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
@@ -2252,6 +2311,7 @@ ifapi_json_TPMU_SYM_KEY_BITS_serialize(const TPMU_SYM_KEY_BITS *in, UINT32 selec
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the symmetric mode.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
@@ -2277,6 +2337,7 @@ ifapi_json_TPMU_SYM_MODE_serialize(const TPMU_SYM_MODE *in, UINT32 selector, jso
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_SYM_DEF_OBJECT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_SYM_DEF_OBJECT_serialize(const TPMT_SYM_DEF_OBJECT *in, json_object **jso)
@@ -2316,6 +2377,7 @@ ifapi_json_TPMT_SYM_DEF_OBJECT_serialize(const TPMT_SYM_DEF_OBJECT *in, json_obj
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SYMCIPHER_PARMS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SYMCIPHER_PARMS_serialize(const TPMS_SYMCIPHER_PARMS *in, json_object **jso)
@@ -2341,6 +2403,7 @@ ifapi_json_TPMS_SYMCIPHER_PARMS_serialize(const TPMS_SYMCIPHER_PARMS *in, json_o
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SCHEME_HASH.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_HASH_serialize(const TPMS_SCHEME_HASH *in, json_object **jso)
@@ -2366,6 +2429,7 @@ ifapi_json_TPMS_SCHEME_HASH_serialize(const TPMS_SCHEME_HASH *in, json_object **
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SCHEME_ECDAA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_ECDAA_serialize(const TPMS_SCHEME_ECDAA *in, json_object **jso)
@@ -2393,6 +2457,9 @@ ifapi_json_TPMS_SCHEME_ECDAA_serialize(const TPMS_SCHEME_ECDAA *in, json_object 
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_KEYEDHASH_SCHEME_serialize(const TPMI_ALG_KEYEDHASH_SCHEME in, json_object **jso)
@@ -2408,6 +2475,7 @@ ifapi_json_TPMI_ALG_KEYEDHASH_SCHEME_serialize(const TPMI_ALG_KEYEDHASH_SCHEME i
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SCHEME_HMAC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_HMAC_serialize(const TPMS_SCHEME_HMAC *in, json_object **jso)
@@ -2422,6 +2490,7 @@ ifapi_json_TPMS_SCHEME_HMAC_serialize(const TPMS_SCHEME_HMAC *in, json_object **
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SCHEME_XOR.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_XOR_serialize(const TPMS_SCHEME_XOR *in, json_object **jso)
@@ -2449,10 +2518,12 @@ ifapi_json_TPMS_SCHEME_XOR_serialize(const TPMS_SCHEME_XOR *in, json_object **js
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the keyedhash scheme.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_SCHEME_KEYEDHASH.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_SCHEME_KEYEDHASH_serialize(const TPMU_SCHEME_KEYEDHASH *in, UINT32 selector, json_object **jso)
@@ -2476,6 +2547,7 @@ ifapi_json_TPMU_SCHEME_KEYEDHASH_serialize(const TPMU_SCHEME_KEYEDHASH *in, UINT
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_KEYEDHASH_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_KEYEDHASH_SCHEME_serialize(const TPMT_KEYEDHASH_SCHEME *in, json_object **jso)
@@ -2508,6 +2580,7 @@ ifapi_json_TPMT_KEYEDHASH_SCHEME_serialize(const TPMT_KEYEDHASH_SCHEME *in, json
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIG_SCHEME_RSASSA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_RSASSA_serialize(const TPMS_SIG_SCHEME_RSASSA *in, json_object **jso)
@@ -2522,6 +2595,7 @@ ifapi_json_TPMS_SIG_SCHEME_RSASSA_serialize(const TPMS_SIG_SCHEME_RSASSA *in, js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIG_SCHEME_RSAPSS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_RSAPSS_serialize(const TPMS_SIG_SCHEME_RSAPSS *in, json_object **jso)
@@ -2536,6 +2610,7 @@ ifapi_json_TPMS_SIG_SCHEME_RSAPSS_serialize(const TPMS_SIG_SCHEME_RSAPSS *in, js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIG_SCHEME_ECDSA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_ECDSA_serialize(const TPMS_SIG_SCHEME_ECDSA *in, json_object **jso)
@@ -2550,6 +2625,7 @@ ifapi_json_TPMS_SIG_SCHEME_ECDSA_serialize(const TPMS_SIG_SCHEME_ECDSA *in, json
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIG_SCHEME_SM2.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_SM2_serialize(const TPMS_SIG_SCHEME_SM2 *in, json_object **jso)
@@ -2564,6 +2640,7 @@ ifapi_json_TPMS_SIG_SCHEME_SM2_serialize(const TPMS_SIG_SCHEME_SM2 *in, json_obj
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIG_SCHEME_ECSCHNORR.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_ECSCHNORR_serialize(const TPMS_SIG_SCHEME_ECSCHNORR *in, json_object **jso)
@@ -2578,6 +2655,7 @@ ifapi_json_TPMS_SIG_SCHEME_ECSCHNORR_serialize(const TPMS_SIG_SCHEME_ECSCHNORR *
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIG_SCHEME_ECDAA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_ECDAA_serialize(const TPMS_SIG_SCHEME_ECDAA *in, json_object **jso)
@@ -2589,10 +2667,12 @@ ifapi_json_TPMS_SIG_SCHEME_ECDAA_serialize(const TPMS_SIG_SCHEME_ECDAA *in, json
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the signature scheme.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_SIG_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_SIG_SCHEME_serialize(const TPMU_SIG_SCHEME *in, UINT32 selector, json_object **jso)
@@ -2626,6 +2706,7 @@ ifapi_json_TPMU_SIG_SCHEME_serialize(const TPMU_SIG_SCHEME *in, UINT32 selector,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_SIG_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_SIG_SCHEME_serialize(const TPMT_SIG_SCHEME *in, json_object **jso)
@@ -2658,6 +2739,7 @@ ifapi_json_TPMT_SIG_SCHEME_serialize(const TPMT_SIG_SCHEME *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_ENC_SCHEME_OAEP.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ENC_SCHEME_OAEP_serialize(const TPMS_ENC_SCHEME_OAEP *in, json_object **jso)
@@ -2686,6 +2768,7 @@ ifapi_json_TPMS_ENC_SCHEME_RSAES_serialize(const TPMS_ENC_SCHEME_RSAES *in, json
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_KEY_SCHEME_ECDH.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_KEY_SCHEME_ECDH_serialize(const TPMS_KEY_SCHEME_ECDH *in, json_object **jso)
@@ -2700,6 +2783,7 @@ ifapi_json_TPMS_KEY_SCHEME_ECDH_serialize(const TPMS_KEY_SCHEME_ECDH *in, json_o
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SCHEME_MGF1.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_MGF1_serialize(const TPMS_SCHEME_MGF1 *in, json_object **jso)
@@ -2714,6 +2798,7 @@ ifapi_json_TPMS_SCHEME_MGF1_serialize(const TPMS_SCHEME_MGF1 *in, json_object **
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SCHEME_KDF1_SP800_56A.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_KDF1_SP800_56A_serialize(const TPMS_SCHEME_KDF1_SP800_56A *in, json_object **jso)
@@ -2728,6 +2813,7 @@ ifapi_json_TPMS_SCHEME_KDF1_SP800_56A_serialize(const TPMS_SCHEME_KDF1_SP800_56A
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SCHEME_KDF1_SP800_108.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_KDF1_SP800_108_serialize(const TPMS_SCHEME_KDF1_SP800_108 *in, json_object **jso)
@@ -2739,10 +2825,12 @@ ifapi_json_TPMS_SCHEME_KDF1_SP800_108_serialize(const TPMS_SCHEME_KDF1_SP800_108
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the KDF scheme.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_KDF_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_KDF_SCHEME_serialize(const TPMU_KDF_SCHEME *in, UINT32 selector, json_object **jso)
@@ -2768,6 +2856,7 @@ ifapi_json_TPMU_KDF_SCHEME_serialize(const TPMU_KDF_SCHEME *in, UINT32 selector,
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_KDF_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_KDF_SCHEME_serialize(const TPMT_KDF_SCHEME *in, json_object **jso)
@@ -2797,6 +2886,9 @@ ifapi_json_TPMT_KDF_SCHEME_serialize(const TPMT_KDF_SCHEME *in, json_object **js
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_ASYM_SCHEME_serialize(const TPMI_ALG_ASYM_SCHEME in, json_object **jso)
@@ -2811,10 +2903,12 @@ ifapi_json_TPMI_ALG_ASYM_SCHEME_serialize(const TPMI_ALG_ASYM_SCHEME in, json_ob
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the scheme.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_ASYM_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_ASYM_SCHEME_serialize(const TPMU_ASYM_SCHEME *in, UINT32 selector, json_object **jso)
@@ -2852,6 +2946,7 @@ ifapi_json_TPMU_ASYM_SCHEME_serialize(const TPMU_ASYM_SCHEME *in, UINT32 selecto
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_ASYM_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_ASYM_SCHEME_serialize(const TPMT_ASYM_SCHEME *in, json_object **jso)
@@ -2881,6 +2976,9 @@ ifapi_json_TPMT_ASYM_SCHEME_serialize(const TPMT_ASYM_SCHEME *in, json_object **
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_RSA_SCHEME_serialize(const TPMI_ALG_RSA_SCHEME in, json_object **jso)
@@ -2897,6 +2995,7 @@ ifapi_json_TPMI_ALG_RSA_SCHEME_serialize(const TPMI_ALG_RSA_SCHEME in, json_obje
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_RSA_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_RSA_SCHEME_serialize(const TPMT_RSA_SCHEME *in, json_object **jso)
@@ -2929,6 +3028,7 @@ ifapi_json_TPMT_RSA_SCHEME_serialize(const TPMT_RSA_SCHEME *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_PUBLIC_KEY_RSA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_PUBLIC_KEY_RSA_serialize(const TPM2B_PUBLIC_KEY_RSA *in, json_object **jso)
@@ -2974,6 +3074,7 @@ ifapi_json_TPMI_RSA_KEY_BITS_serialize(const TPMI_RSA_KEY_BITS in, json_object *
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_ECC_PARAMETER.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_ECC_PARAMETER_serialize(const TPM2B_ECC_PARAMETER *in, json_object **jso)
@@ -3003,6 +3104,7 @@ ifapi_json_TPM2B_ECC_PARAMETER_serialize(const TPM2B_ECC_PARAMETER *in, json_obj
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_ECC_POINT.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ECC_POINT_serialize(const TPMS_ECC_POINT *in, json_object **jso)
@@ -3030,6 +3132,9 @@ ifapi_json_TPMS_ECC_POINT_serialize(const TPMS_ECC_POINT *in, json_object **jso)
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_ECC_SCHEME_serialize(const TPMI_ALG_ECC_SCHEME in, json_object **jso)
@@ -3061,6 +3166,7 @@ ifapi_json_TPMI_ECC_CURVE_serialize(const TPMI_ECC_CURVE in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_ECC_SCHEME.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_ECC_SCHEME_serialize(const TPMT_ECC_SCHEME *in, json_object **jso)
@@ -3093,6 +3199,7 @@ ifapi_json_TPMT_ECC_SCHEME_serialize(const TPMT_ECC_SCHEME *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_RSA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_RSA_serialize(const TPMS_SIGNATURE_RSA *in, json_object **jso)
@@ -3123,6 +3230,7 @@ ifapi_json_TPMS_SIGNATURE_RSA_serialize(const TPMS_SIGNATURE_RSA *in, json_objec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_RSASSA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_RSASSA_serialize(const TPMS_SIGNATURE_RSASSA *in, json_object **jso)
@@ -3137,6 +3245,7 @@ ifapi_json_TPMS_SIGNATURE_RSASSA_serialize(const TPMS_SIGNATURE_RSASSA *in, json
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_RSAPSS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_RSAPSS_serialize(const TPMS_SIGNATURE_RSAPSS *in, json_object **jso)
@@ -3151,6 +3260,7 @@ ifapi_json_TPMS_SIGNATURE_RSAPSS_serialize(const TPMS_SIGNATURE_RSAPSS *in, json
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_ECC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECC_serialize(const TPMS_SIGNATURE_ECC *in, json_object **jso)
@@ -3186,6 +3296,7 @@ ifapi_json_TPMS_SIGNATURE_ECC_serialize(const TPMS_SIGNATURE_ECC *in, json_objec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_ECDSA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECDSA_serialize(const TPMS_SIGNATURE_ECDSA *in, json_object **jso)
@@ -3200,6 +3311,7 @@ ifapi_json_TPMS_SIGNATURE_ECDSA_serialize(const TPMS_SIGNATURE_ECDSA *in, json_o
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_ECDAA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECDAA_serialize(const TPMS_SIGNATURE_ECDAA *in, json_object **jso)
@@ -3214,6 +3326,7 @@ ifapi_json_TPMS_SIGNATURE_ECDAA_serialize(const TPMS_SIGNATURE_ECDAA *in, json_o
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_SM2.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_SM2_serialize(const TPMS_SIGNATURE_SM2 *in, json_object **jso)
@@ -3228,6 +3341,7 @@ ifapi_json_TPMS_SIGNATURE_SM2_serialize(const TPMS_SIGNATURE_SM2 *in, json_objec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_SIGNATURE_ECSCHNORR.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECSCHNORR_serialize(const TPMS_SIGNATURE_ECSCHNORR *in, json_object **jso)
@@ -3239,10 +3353,12 @@ ifapi_json_TPMS_SIGNATURE_ECSCHNORR_serialize(const TPMS_SIGNATURE_ECSCHNORR *in
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the signature.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_SIGNATURE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_SIGNATURE_serialize(const TPMU_SIGNATURE *in, UINT32 selector, json_object **jso)
@@ -3276,6 +3392,7 @@ ifapi_json_TPMU_SIGNATURE_serialize(const TPMU_SIGNATURE *in, UINT32 selector, j
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_SIGNATURE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_SIGNATURE_serialize(const TPMT_SIGNATURE *in, json_object **jso)
@@ -3308,6 +3425,7 @@ ifapi_json_TPMT_SIGNATURE_serialize(const TPMT_SIGNATURE *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_ENCRYPTED_SECRET.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_ENCRYPTED_SECRET_serialize(const TPM2B_ENCRYPTED_SECRET *in, json_object **jso)
@@ -3334,6 +3452,9 @@ ifapi_json_TPM2B_ENCRYPTED_SECRET_serialize(const TPM2B_ENCRYPTED_SECRET *in, js
  *
  * @param[in] in variable to be serialized.
  * @param[out] jso pointer to the json object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_json_TPMI_ALG_PUBLIC_serialize(const TPMI_ALG_PUBLIC in, json_object **jso)
@@ -3347,10 +3468,12 @@ ifapi_json_TPMI_ALG_PUBLIC_serialize(const TPMI_ALG_PUBLIC in, json_object **jso
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the public ID.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_PUBLIC_ID.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_PUBLIC_ID_serialize(const TPMU_PUBLIC_ID *in, UINT32 selector, json_object **jso)
@@ -3378,6 +3501,7 @@ ifapi_json_TPMU_PUBLIC_ID_serialize(const TPMU_PUBLIC_ID *in, UINT32 selector, j
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_KEYEDHASH_PARMS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_KEYEDHASH_PARMS_serialize(const TPMS_KEYEDHASH_PARMS *in, json_object **jso)
@@ -3403,6 +3527,7 @@ ifapi_json_TPMS_KEYEDHASH_PARMS_serialize(const TPMS_KEYEDHASH_PARMS *in, json_o
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_ASYM_PARMS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ASYM_PARMS_serialize(const TPMS_ASYM_PARMS *in, json_object **jso)
@@ -3433,6 +3558,7 @@ ifapi_json_TPMS_ASYM_PARMS_serialize(const TPMS_ASYM_PARMS *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_RSA_PARMS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_RSA_PARMS_serialize(const TPMS_RSA_PARMS *in, json_object **jso)
@@ -3473,6 +3599,7 @@ ifapi_json_TPMS_RSA_PARMS_serialize(const TPMS_RSA_PARMS *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_ECC_PARMS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ECC_PARMS_serialize(const TPMS_ECC_PARMS *in, json_object **jso)
@@ -3510,10 +3637,12 @@ ifapi_json_TPMS_ECC_PARMS_serialize(const TPMS_ECC_PARMS *in, json_object **jso)
  *
  * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the public parameters.
  * @param[out] jso pointer to the json object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_PUBLIC_PARMS.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_PUBLIC_PARMS_serialize(const TPMU_PUBLIC_PARMS *in, UINT32 selector, json_object **jso)
@@ -3541,6 +3670,7 @@ ifapi_json_TPMU_PUBLIC_PARMS_serialize(const TPMU_PUBLIC_PARMS *in, UINT32 selec
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_PUBLIC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_PUBLIC_serialize(const TPMT_PUBLIC *in, json_object **jso)
@@ -3591,6 +3721,7 @@ ifapi_json_TPMT_PUBLIC_serialize(const TPMT_PUBLIC *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_PUBLIC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_PUBLIC_serialize(const TPM2B_PUBLIC *in, json_object **jso)
@@ -3623,6 +3754,7 @@ ifapi_json_TPM2B_PUBLIC_serialize(const TPM2B_PUBLIC *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_PRIVATE.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_PRIVATE_serialize(const TPM2B_PRIVATE *in, json_object **jso)
@@ -3685,8 +3817,8 @@ ifapi_json_TPM2_NT_serialize(const TPM2_NT in, json_object **jso)
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the constant is not of type TPMA_NV.
  */
-
-TSS2_RC ifapi_json_TPMA_NV_serialize(const TPMA_NV in, json_object **jso)
+TSS2_RC
+ifapi_json_TPMA_NV_serialize(const TPMA_NV in, json_object **jso)
 {
     struct { TPMA_NV in; char *name; } tab[] = {
         { TPMA_NV_PPWRITE, "PPWRITE" },
@@ -3747,6 +3879,7 @@ TSS2_RC ifapi_json_TPMA_NV_serialize(const TPMA_NV in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_NV_PUBLIC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_NV_PUBLIC_serialize(const TPMS_NV_PUBLIC *in, json_object **jso)
@@ -3792,6 +3925,7 @@ ifapi_json_TPMS_NV_PUBLIC_serialize(const TPMS_NV_PUBLIC *in, json_object **jso)
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_NV_PUBLIC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_NV_PUBLIC_serialize(const TPM2B_NV_PUBLIC *in, json_object **jso)
@@ -3824,6 +3958,7 @@ ifapi_json_TPM2B_NV_PUBLIC_serialize(const TPM2B_NV_PUBLIC *in, json_object **js
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_CREATION_DATA.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CREATION_DATA_serialize(const TPMS_CREATION_DATA *in, json_object **jso)

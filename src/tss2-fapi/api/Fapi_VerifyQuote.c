@@ -27,15 +27,15 @@
  *
  * Verifies that the data returned by a quote is valid.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] publicKeyPath The path to the signing key
- * @param [in] qualifyingData The qualifying data nonce. May be NULL
- * @param [in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
- *             if qualifyingData is NULL
- * @param [in] quoteInfo The quote information
- * @param [in] signature The quote's signature
- * @param [in] signatureSize The size of signature in bytes
- * @param [in] pcrLog The PCR's log. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] publicKeyPath The path to the signing key
+ * @param[in] qualifyingData The qualifying data nonce. May be NULL
+ * @param[in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
+ *            if qualifyingData is NULL
+ * @param[in] quoteInfo The quote information
+ * @param[in] signature The quote's signature
+ * @param[in] signatureSize The size of signature in bytes
+ * @param[in] pcrLog The PCR's log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, publicKeyPath, quoteInfo,
@@ -51,6 +51,13 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_SIGNATURE_VERIFICATION_FAILED if the signature could not
+ *         be verified
  */
 TSS2_RC
 Fapi_VerifyQuote(
@@ -92,7 +99,7 @@ Fapi_VerifyQuote(
 
     return_if_error_reset_state(r, "Key_VerifyQuote");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -101,15 +108,15 @@ Fapi_VerifyQuote(
  * Verifies that the data returned by a quote is valid.
  * Call Fapi_VerifyQuote_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] publicKeyPath The path to the signing key
- * @param [in] qualifyingData The qualifying data nonce. May be NULL
- * @param [in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
- *             if qualifyingData is NULL
- * @param [in] quoteInfo The quote information
- * @param [in] signature The quote's signature
- * @param [in] signatureSize The size of signature in bytes
- * @param [in] pcrLog The PCR's log. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] publicKeyPath The path to the signing key
+ * @param[in] qualifyingData The qualifying data nonce. May be NULL
+ * @param[in] qualifyingDataSize The size of qualifyingData in bytes. Must be 0
+ *            if qualifyingData is NULL
+ * @param[in] quoteInfo The quote information
+ * @param[in] signature The quote's signature
+ * @param[in] signatureSize The size of signature in bytes
+ * @param[in] pcrLog The PCR's log. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, publicKeyPath, quoteInfo,
@@ -125,6 +132,8 @@ Fapi_VerifyQuote(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
  */
 TSS2_RC
 Fapi_VerifyQuote_Async(
@@ -172,7 +181,7 @@ Fapi_VerifyQuote_Async(
     r = ifapi_non_tpm_mode_init(context);
     return_if_error(r, "Initialize VerifyQuote");
 
-
+    /* Copy parameters to context for use during _Finish. */
     uint8_t * signatureBuffer = malloc(signatureSize);
     goto_if_null2(signatureBuffer, "Out of memory",
             r, TSS2_FAPI_RC_MEMORY, error_cleanup);
@@ -190,13 +199,17 @@ Fapi_VerifyQuote_Async(
                 qualifyingData, qualifyingDataSize);
     }
 
+    /* Load the key for verification from the keystore. */
     r = ifapi_keystore_load_async(&context->keystore, &context->io, publicKeyPath);
     return_if_error2(r, "Could not open: %s", publicKeyPath);
 
+    /* Initialize the context state for this operation. */
     context->state = VERIFY_QUOTE_READ;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->keyPath);
     SAFE_FREE(signatureBuffer);
     command->signature = NULL;
@@ -209,7 +222,7 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_VerifyQuote_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -221,6 +234,11 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_SIGNATURE_VERIFICATION_FAILED if the signature could not
+ *         be verified
  */
 TSS2_RC
 Fapi_VerifyQuote_Finish(
@@ -241,19 +259,18 @@ Fapi_VerifyQuote_Finish(
 
     memset(&key_object, 0, sizeof(IFAPI_OBJECT));
 
-    switch(context->state) {
+    switch (context->state) {
         statecase(context->state, VERIFY_QUOTE_READ);
             r = ifapi_keystore_load_finish(&context->keystore, &context->io, &key_object);
             return_try_again(r);
             return_if_error_reset_state(r, "read_finish failed");
 
-            r = ifapi_initialize_object(context->esys, &key_object);
-            goto_if_error_reset_state(r, "Initialize public key  object", error_cleanup);
-
+            /* Recalculate the quote-info and attest2b buffer. */
             r = ifapi_get_quote_info(command->quoteInfo, &attest2b,
                                      &command->fapi_quote_info);
             goto_if_error(r, "Get quote info.", error_cleanup);
 
+            /* Verify the signature over the attest2b structure. */
             r = ifapi_verify_signature_quote(&key_object,
                                              command->signature,
                                              command->signatureSize,
@@ -262,26 +279,33 @@ Fapi_VerifyQuote_Finish(
                                              &command->fapi_quote_info.sig_scheme);
             goto_if_error(r, "Verify signature.", error_cleanup);
 
+            /* If no logData was provided then the operation is done. */
             if (!command->logData) {
-                context->state =  _FAPI_STATE_INIT;
+                context->state = _FAPI_STATE_INIT;
                 break;
             }
 
+            /* If logData was provided then the pcr_digests need to be recalculated
+               and verified against the quote_info. */
+
+            /* Parse the logData JSON. */
             command->event_list = json_tokener_parse(context->cmd.pcr.logData);
             return_if_null(command->event_list, "Json error.", TSS2_FAPI_RC_BAD_VALUE);
 
-            r  = ifapi_calculate_pcr_digest(command->event_list,
-                                            &command->fapi_quote_info, &pcr_digest);
+            /* Recalculate and verify the PCR digests. */
+            r = ifapi_calculate_pcr_digest(command->event_list,
+                                           &command->fapi_quote_info, &pcr_digest);
 
             goto_if_error(r, "Verify event list.", error_cleanup);
 
-            context->state =  _FAPI_STATE_INIT;
+            context->state = _FAPI_STATE_INIT;
             break;
 
         statecasedefault(context->state);
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     if (key_object.objectType)
         ifapi_cleanup_ifapi_object(&key_object);
     if (command->event_list)
@@ -293,6 +317,6 @@ error_cleanup:
     SAFE_FREE(command->signature);
     SAFE_FREE(command->quoteInfo);
     SAFE_FREE(command->logData);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

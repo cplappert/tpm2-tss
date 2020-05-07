@@ -23,7 +23,11 @@ TSS2_RC
 ifapi_flush_object(FAPI_CONTEXT *context, ESYS_TR session);
 
 TSS2_RC
-ifapi_get_session_async(ESYS_CONTEXT *esys, ESYS_TR saltkey, const IFAPI_PROFILE *profile);
+ifapi_get_session_async(
+    ESYS_CONTEXT *esys,
+    ESYS_TR saltkey,
+    const IFAPI_PROFILE*profile,
+    TPMI_ALG_HASH hashAlg);
 
 TSS2_RC
 ifapi_get_session_finish(ESYS_CONTEXT *esys, ESYS_TR *session,
@@ -34,21 +38,6 @@ ifapi_set_auth(
     FAPI_CONTEXT *context,
     IFAPI_OBJECT *auth_object,
     const char *description);
-
-TSS2_RC
-ifapi_key_deserialize_keep_json(
-    FAPI_CONTEXT *context,
-    json_object *jso,
-    ESYS_TR *kHandle,
-    IFAPI_OBJECT *object);
-
-
-TSS2_RC
-ifapi_key_deserialize(
-    FAPI_CONTEXT *context,
-    json_object *jso,
-    ESYS_TR *kHandle,
-    IFAPI_OBJECT *object);
 
 TSS2_RC
 ifapi_get_free_handle_async(FAPI_CONTEXT *fctx, TPM2_HANDLE *handle);
@@ -90,7 +79,10 @@ ifapi_get_sessions_async(
     TPMA_SESSION attribute_flags2);
 
 TSS2_RC
-ifapi_get_sessions_finish(FAPI_CONTEXT *context, const IFAPI_PROFILE *profile);
+ifapi_get_sessions_finish(
+    FAPI_CONTEXT *context,
+    const IFAPI_PROFILE *profile,
+    TPMI_ALG_HASH hash_alg);
 
 TSS2_RC
 ifapi_merge_profile_into_nv_template(
@@ -121,13 +113,6 @@ ifapi_load_keys_finish(
     IFAPI_OBJECT **key_object);
 
 TSS2_RC
-ifapi_get_entities(
-    IFAPI_KEYSTORE *keystore,
-    const char *searchPath,
-    char ***pathlist,
-    size_t *numPaths);
-
-TSS2_RC
 ifapi_nv_read(
     FAPI_CONTEXT *context,
     uint8_t     **data,
@@ -154,20 +139,6 @@ ifapi_get_random(
     uint8_t **data);
 
 TSS2_RC
-ifapi_sym_encrypt_decrypt_async(
-    FAPI_CONTEXT *context,
-    const uint8_t *in_data,
-    size_t       size,
-    TPMI_YES_NO decrypt);
-
-TSS2_RC
-ifapi_sym_encrypt_decrypt_finish(
-    FAPI_CONTEXT *context,
-    uint8_t     **data,
-    size_t       *size,
-    TPMI_YES_NO decrypt);
-
-TSS2_RC
 ifapi_load_key(
     FAPI_CONTEXT  *context,
     char    const *keyPath,
@@ -183,19 +154,8 @@ ifapi_key_sign(
     char           **publicKey,
     char           **certificate);
 
-void
-ifapi_full_path_to_fapi_path(
-    IFAPI_KEYSTORE *keystore,
-    char *path);
-
 TSS2_RC
 ifapi_authorize_object(
-    FAPI_CONTEXT *context,
-    IFAPI_OBJECT *object,
-    ESYS_TR      *session);
-
-TSS2_RC
-ifapi_authorize_objectPV2(
     FAPI_CONTEXT *context,
     IFAPI_OBJECT *object,
     ESYS_TR      *session);
@@ -205,12 +165,6 @@ ifapi_get_json(
     FAPI_CONTEXT *context,
     IFAPI_OBJECT *object,
     char **json_string);
-
-TSS2_RC
-ifapi_read_object(
-    FAPI_CONTEXT *context,
-    IFAPI_OBJECT *object,
-    const char *path);
 
 TSS2_RC
 ifapi_key_create_prepare(
@@ -245,7 +199,7 @@ ifapi_get_sig_scheme(
     IFAPI_OBJECT *object,
     char const *padding,
     TPM2B_DIGEST *digest,
-    TPMT_SIG_SCHEME **sig_scheme);
+    TPMT_SIG_SCHEME *sig_scheme);
 
 TSS2_RC
 ifapi_change_auth_hierarchy(
@@ -259,7 +213,7 @@ ifapi_change_policy_hierarchy(
     FAPI_CONTEXT *context,
     ESYS_TR handle,
     IFAPI_OBJECT *hierarchy_object,
-    TPMS_POLICY_HARNESS *policy_harness);
+    TPMS_POLICY *policy);
 
 IFAPI_OBJECT
 *ifapi_allocate_object(FAPI_CONTEXT *context);
@@ -299,11 +253,5 @@ ifapi_get_description(IFAPI_OBJECT *object, char **description);
 
 void
 ifapi_set_description(IFAPI_OBJECT *object, char *description);
-
-TSS2_RC
-ifapi_expand_path(
-    IFAPI_KEYSTORE *keystore,
-    const char *path,
-    char **file_name);
 
 #endif /* FAPI_UTIL_H */

@@ -92,12 +92,12 @@ static void cleanup_policy_elements(TPML_POLICYELEMENTS *policy)
  * @param[in]  object The policy to be cleaned up.
  *
  */
-static void ifapi_cleanup_policy_harness(TPMS_POLICY_HARNESS *harness)
+static void ifapi_cleanup_policy(TPMS_POLICY *policy)
 {
-    if (harness) {
-       SAFE_FREE(harness->description);
-       SAFE_FREE(harness->policyAuthorizations);
-       cleanup_policy_elements(harness->policy);
+    if (policy) {
+       SAFE_FREE(policy->description);
+       SAFE_FREE(policy->policyAuthorizations);
+       cleanup_policy_elements(policy->policy);
     }
 }
 
@@ -344,68 +344,6 @@ check_bin(void **state)
 
     CHECK_BIN(TPML_PCR_SELECTION, pcr_selection);
 
-    IFAPI_ENCRYPTED_DATA encryptedData = {
-        .type = 0,
-        .key_name = {
-            .size = 1,
-            .name = {1}
-        },
-        .cipher = {
-            .size = 0,
-            .buffer = NULL
-        },
-        .sym_private = {
-            .size = 0,
-            .buffer = NULL
-        },
-        .sym_public = {
-            .size = 0,
-            .publicArea = {
-                .type = TPM2_ALG_RSA,
-                .nameAlg = TPM2_ALG_SHA1,
-                .objectAttributes =
-                (TPMA_OBJECT_USERWITHAUTH |
-                 TPMA_OBJECT_SIGN_ENCRYPT |
-                 TPMA_OBJECT_FIXEDTPM |
-                 TPMA_OBJECT_FIXEDPARENT |
-                 TPMA_OBJECT_SENSITIVEDATAORIGIN),
-                .authPolicy = {
-                    .size = 0,
-                    .buffer = { 0 }
-                },
-                .parameters.rsaDetail = {
-                    .symmetric = {.algorithm = TPM2_ALG_NULL, .keyBits.aes = 128, .mode.aes = TPM2_ALG_CFB},
-                    .scheme = {.scheme = TPM2_ALG_RSAPSS, .details = {.rsapss = {.hashAlg = TPM2_ALG_SHA1}}},
-                    .keyBits = 2048,
-                    .exponent = 0,
-                },
-                .unique.rsa = {
-                    .size = 0,
-                    .buffer = { 0 },
-                },
-            },
-        },
-        .sym_key_size = 0,
-        .sym_iv = {.size = 0, .buffer = {0}},
-        .sym_policy_harness = {
-            .description = "",
-            .policyDigests = {
-                .count = 1,
-                .digests = {
-                    {
-                        .hashAlg = TPM2_ALG_SHA256,
-                        .digest = {
-                            .sha256 = {0}
-                        }
-                    }
-                }
-            }
-        }
-    };
-
-    CHECK_BIN(IFAPI_ENCRYPTED_DATA, encryptedData);
-    free(encryptedData2.cipher.buffer);
-
     IFAPI_IMA_EVENT imaEvent = {
         .eventData = {
             .size = 0,
@@ -431,7 +369,7 @@ check_policy_bin(void **state)
     TPML_POLICYELEMENTS *policy_elements_or;
     TPML_POLICYELEMENTS *policy_elements0;
     TPML_POLICYELEMENTS *policy_elements1;
-    TPMS_POLICY_HARNESS policy_harness;
+    TPMS_POLICY policy;
     TPMS_POLICYBRANCH branch0;
     TPMS_POLICYBRANCH branch1;
 
@@ -463,23 +401,23 @@ check_policy_bin(void **state)
     }
     policy_elements0->count = 1;
     policy_elements0->elements[0] = policy_element0;
-    policy_harness.policy = policy_elements0;
-    policy_harness.description = "hareness description";
-    policy_harness.policyAuthorizations = NULL;
-    memset(&policy_harness.policyDigests, 0, sizeof(TPML_DIGEST_VALUES));
+    policy.policy = policy_elements0;
+    policy.description = "hareness description";
+    policy.policyAuthorizations = NULL;
+    memset(&policy.policyDigests, 0, sizeof(TPML_DIGEST_VALUES));
 
-    //CHECK_BIN(TPMS_POLICY_HARNESS, policy_harness);
+    //CHECK_BIN(TPMS_POLICY, policy);
     {
         char *jso_string1, *jso_string2;
         json_object *jso = NULL;
-        TSS2_RC rc = ifapi_json_TPMS_POLICY_HARNESS_serialize (&policy_harness, &jso);
+        TSS2_RC rc = ifapi_json_TPMS_POLICY_serialize (&policy, &jso);
         jso_string1 = strdup(json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY));
         assert_int_equal (rc, TSS2_RC_SUCCESS);
-        rc = ifapi_json_TPMS_POLICY_HARNESS_deserialize (jso, &policy_harness);
+        rc = ifapi_json_TPMS_POLICY_deserialize (jso, &policy);
         assert_int_equal (rc, TSS2_RC_SUCCESS);
         json_object_put(jso);
         jso = NULL;
-        rc = ifapi_json_TPMS_POLICY_HARNESS_serialize (&policy_harness, &jso);
+        rc = ifapi_json_TPMS_POLICY_serialize (&policy, &jso);
         jso_string2 = strdup(json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY));
         assert_int_equal (rc, TSS2_RC_SUCCESS);
         if (strcmp(jso_string1, jso_string2)) {
@@ -491,7 +429,7 @@ check_policy_bin(void **state)
         free(jso_string1);
         free(jso_string2);
     }
-    ifapi_cleanup_policy_harness(&policy_harness);
+    ifapi_cleanup_policy(&policy);
 
     or_branch_list = calloc(2, sizeof(TPML_POLICYBRANCHES) + (2 * sizeof(TPMS_POLICYBRANCH)));
     if (or_branch_list == NULL) {
@@ -537,20 +475,20 @@ check_policy_bin(void **state)
     policy_element_or.element.PolicyOr.branches = or_branch_list;
     policy_element_or.type = POLICYOR;
     policy_elements_or->elements[0] = policy_element_or;
-    policy_harness.policy =  policy_elements_or;
+    policy.policy =  policy_elements_or;
 
-    //CHECK_BIN(TPMS_POLICY_HARNESS, policy_harness);
+    //CHECK_BIN(TPMS_POLICY, policy);
     {
         char *jso_string1, *jso_string2;
         json_object *jso = NULL;
-        TSS2_RC rc = ifapi_json_TPMS_POLICY_HARNESS_serialize (&policy_harness, &jso);
+        TSS2_RC rc = ifapi_json_TPMS_POLICY_serialize (&policy, &jso);
         jso_string1 = strdup(json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY));
         assert_int_equal (rc, TSS2_RC_SUCCESS);
-        rc = ifapi_json_TPMS_POLICY_HARNESS_deserialize (jso, &policy_harness);
+        rc = ifapi_json_TPMS_POLICY_deserialize (jso, &policy);
         assert_int_equal (rc, TSS2_RC_SUCCESS);
         json_object_put(jso);
         jso = NULL;
-        rc = ifapi_json_TPMS_POLICY_HARNESS_serialize (&policy_harness, &jso);
+        rc = ifapi_json_TPMS_POLICY_serialize (&policy, &jso);
         jso_string2 = strdup(json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY));
         assert_int_equal (rc, TSS2_RC_SUCCESS);
         if (strcmp(jso_string1, jso_string2)) {
@@ -562,7 +500,7 @@ check_policy_bin(void **state)
         free(jso_string1);
         free(jso_string2);
     }
-    ifapi_cleanup_policy_harness(&policy_harness);
+    ifapi_cleanup_policy(&policy);
 
     free(policy_elements_or);
     free(policy_elements0);
@@ -1119,19 +1057,19 @@ check_json_policy(void **state)
         "}";
 
 
-//    CHECK_JSON(TPMS_POLICY_HARNESS, test_json_policy_nv_src, test_json_policy_nv_expected);
+//    CHECK_JSON(TPMS_POLICY, test_json_policy_nv_src, test_json_policy_nv_expected);
         {
-            TPMS_POLICY_HARNESS out;
+            TPMS_POLICY out;
             TSS2_RC rc;
             json_object *jso = json_tokener_parse(test_json_policy_nv_src);
             if (!jso) fprintf(stderr, "JSON parsing failed\n");
             assert_non_null(jso);
-            rc = ifapi_json_TPMS_POLICY_HARNESS_deserialize (jso, &out);
+            rc = ifapi_json_TPMS_POLICY_deserialize (jso, &out);
             if (rc) fprintf(stderr, "Deserialization failed\n");
             assert_int_equal (rc, TSS2_RC_SUCCESS);
             json_object_put(jso);
             jso = NULL;
-            rc = ifapi_json_TPMS_POLICY_HARNESS_serialize (&out, &jso);
+            rc = ifapi_json_TPMS_POLICY_serialize (&out, &jso);
             assert_int_equal (rc, TSS2_RC_SUCCESS);
             assert_non_null(jso);
             const char *jso_string = json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY);
@@ -1140,7 +1078,7 @@ check_json_policy(void **state)
             char *string2 =  normalize(test_json_policy_nv_expected);
             assert_string_equal(string1, string2);
             json_object_put(jso);
-            ifapi_cleanup_policy_harness(&out);
+            ifapi_cleanup_policy(&out);
             free(string1);
             free(string2);
         }
@@ -1230,19 +1168,19 @@ check_json_policy(void **state)
         LOG_ERROR("%s", "Out of memory.");
         return;
     }
-//    CHECK_JSON(TPMS_POLICY_HARNESS, test_json_policy_or_src, test_json_policy_or_expected);
+//    CHECK_JSON(TPMS_POLICY, test_json_policy_or_src, test_json_policy_or_expected);
         {
-            TPMS_POLICY_HARNESS out;
+            TPMS_POLICY out;
             TSS2_RC rc;
             json_object *jso = json_tokener_parse(test_json_policy_or_src);
             if (!jso) fprintf(stderr, "JSON parsing failed\n");
             assert_non_null(jso);
-            rc = ifapi_json_TPMS_POLICY_HARNESS_deserialize (jso, &out);
+            rc = ifapi_json_TPMS_POLICY_deserialize (jso, &out);
             if (rc) fprintf(stderr, "Deserialization failed\n");
             assert_int_equal (rc, TSS2_RC_SUCCESS);
             json_object_put(jso);
             jso = NULL;
-            rc = ifapi_json_TPMS_POLICY_HARNESS_serialize (&out, &jso);
+            rc = ifapi_json_TPMS_POLICY_serialize (&out, &jso);
             assert_int_equal (rc, TSS2_RC_SUCCESS);
             assert_non_null(jso);
             const char *jso_string = json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY);
@@ -1251,7 +1189,7 @@ check_json_policy(void **state)
             char *string2 =  normalize(test_json_policy_or_expected);
             assert_string_equal(string1, string2);
             json_object_put(jso);
-            ifapi_cleanup_policy_harness(&out);
+            ifapi_cleanup_policy(&out);
             free(string1);
             free(string2);
         }

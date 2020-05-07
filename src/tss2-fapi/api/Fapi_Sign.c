@@ -29,18 +29,18 @@
  * Uses a key, identified by its path, to sign a digest and puts the result in a
  * TPM2B bytestream.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] keyPath The path of the signature key
- * @param [in] padding A padding algorithm. Must be either "RSA_SSA" or
- *             "RSA_PSS" or NULL
- * @param [in] digest The digest to sign. Must be already hashed
- * @param [in] digestSize The size of the digest in bytes
- * @param [out] signature The signature
- * @param [out] signatureSize The size of signature in bytes. May be NULL
- * @param [out] publicKey The public key that can be used to verify signature
- *             in PEM format. May be NULL
- * @param [out] certificate The certificate associated with the signing key in PEM
- *             format. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] keyPath The path of the signature key
+ * @param[in] padding A padding algorithm. Must be either "RSA_SSA" or
+ *            "RSA_PSS" or NULL
+ * @param[in] digest The digest to sign. Must be already hashed
+ * @param[in] digestSize The size of the digest in bytes
+ * @param[out] signature The signature
+ * @param[out] signatureSize The size of signature in bytes. May be NULL
+ * @param[out] publicKey The public key that can be used to verify signature
+ *            in PEM format. May be NULL
+ * @param[out] certificate The certificate associated with the signing key in PEM
+ *            format. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, keyPath, digest or signature
@@ -55,6 +55,19 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Sign(
@@ -113,7 +126,7 @@ Fapi_Sign(
 
     return_if_error_reset_state(r, "Key_Sign");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -124,12 +137,12 @@ Fapi_Sign(
  *
  * Call Fapi_Sign_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [in] keyPath The path of the signature key
- * @param [in] padding A padding algorithm. Must be either "RSA_SSA" or
- *             "RSA_PSS" or NULL
- * @param [in] digest The digest to sign. Must be already hashed
- * @param [in] digestSize The size of the digest in bytes
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] keyPath The path of the signature key
+ * @param[in] padding A padding algorithm. Must be either "RSA_SSA" or
+ *            "RSA_PSS" or NULL
+ * @param[in] digest The digest to sign. Must be already hashed
+ * @param[in] digestSize The size of the digest in bytes
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, keyPath or digest
@@ -144,6 +157,8 @@ Fapi_Sign(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_Sign_Async(
@@ -181,20 +196,23 @@ Fapi_Sign_Async(
     /* Helpful alias pointers */
     IFAPI_Key_Sign * command = &context->Key_Sign;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize Sign");
 
+    /* Copy parameters to context for use during _Finish. */
     FAPI_COPY_DIGEST(&command->digest.buffer[0],
                      command->digest.size, digest, digestSize);
-    r = ifapi_session_init(context);
-    return_if_error(r, "Initialize Key_Sign");
-
     strdup_check(command->keyPath, keyPath, r, error_cleanup);
     strdup_check(command->padding, padding, r, error_cleanup);
+
+    /* Initialize the context state for this operation. */
     context->state = KEY_SIGN_WAIT_FOR_KEY;
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->keyPath);
     SAFE_FREE(command->padding);
     return r;
@@ -204,13 +222,13 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_Sign_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] signature The signature
- * @param [out] signatureSize The size of signature in bytes. May be NULL
- * @param [out] publicKey The public key that can be used to verify signature
- *             in PEM format. May be NULL
- * @param [out] certificate The certificate associated with the signing key in PEM
- *             format. May be NULL
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] signature The signature
+ * @param[out] signatureSize The size of signature in bytes. May be NULL
+ * @param[out] publicKey The public key that can be used to verify signature
+ *            in PEM format. May be NULL
+ * @param[out] certificate The certificate associated with the signing key in PEM
+ *            format. May be NULL
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or signature is NULL.
@@ -222,6 +240,18 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN if policy search for a certain policy digest
+ *         was not successful.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_Sign_Finish(
@@ -245,22 +275,23 @@ Fapi_Sign_Finish(
 
     switch (context->state) {
         statecase(context->state, KEY_SIGN_WAIT_FOR_KEY);
-            r = ifapi_load_key(context,  command->keyPath,
+            /* Load the key used for signing with a helper. */
+            r = ifapi_load_key(context, command->keyPath,
                                &command->key_object);
             return_try_again(r);
             goto_if_error(r, "Fapi load key.", error_cleanup);
 
-            context->state = KEY_SIGN_WAIT_FOR_SIGN;
             fallthrough;
 
         statecase(context->state, KEY_SIGN_WAIT_FOR_SIGN);
+            /* Perform the signing operation using a helper. */
             r = ifapi_key_sign(context, command->key_object,
                     command->padding, &command->digest, &command->tpm_signature,
                     publicKey, certificate);
             return_try_again(r);
             goto_if_error(r, "Fapi sign.", error_cleanup);
 
-
+            /* Convert the TPM datatype signature to something useful for the caller. */
             r = ifapi_tpm_to_fapi_signature(command->key_object,
                      command->tpm_signature, signature, &resultSignatureSize);
             goto_if_error(r, "Create FAPI signature.", error_cleanup);
@@ -270,6 +301,7 @@ Fapi_Sign_Finish(
             fallthrough;
 
         statecase(context->state, KEY_SIGN_CLEANUP)
+            /* Cleanup the session used for authorization. */
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
@@ -280,6 +312,7 @@ Fapi_Sign_Finish(
     }
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     SAFE_FREE(command->tpm_signature);
     SAFE_FREE(command->keyPath);
     SAFE_FREE(command->padding);
@@ -288,6 +321,6 @@ error_cleanup:
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

@@ -21,10 +21,9 @@
  *
  * Exports a policy to a JSON encoded byte buffer.
  *
- * @param [in,out] context The FAPI_CONTEXT
- * @param [in] path The path to the policy that is to be exported
- * @param [out] jsonPolicy The byte buffer the JSON-encoded policy is exported
- *              to
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the policy that is to be exported
+ * @param[out] jsonPolicy The JSON-encoded policy. jsonPolicy MUST NOT be NULL.
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context, path or jsonPolicy is NULL.
@@ -35,6 +34,17 @@
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_ExportPolicy(
@@ -95,8 +105,8 @@ Fapi_ExportPolicy(
  *
  * Call Fapi_ExportPolicy_Finish to finish the execution of this command.
  *
- * @param [in,out] context The FAPI_CONTEXT
- * @param [in] path The path to the policy that is to be exported
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[in] path The path to the policy that is to be exported
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or path is NULL.
@@ -107,6 +117,8 @@ Fapi_ExportPolicy(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_ExportPolicy_Async(
@@ -125,20 +137,26 @@ Fapi_ExportPolicy_Async(
     /* Helpful alias pointers */
     IFAPI_ExportPolicy * command = &context->cmd.ExportPolicy;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize PolicyExport");
 
+    /* Initialize the context state for this operation. */
     if (ifapi_path_type_p(path, IFAPI_POLICY_PATH)) {
         context->state = POLICY_EXPORT_READ_POLICY;
     } else {
         context->state = POLICY_EXPORT_READ_OBJECT;
     }
+
+    /* Copy parameters to context for use during _Finish. */
     strdup_check(command->path, path, r ,error_cleanup);
     memset(&command->object, 0, sizeof(IFAPI_OBJECT));
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
+
 error_cleanup:
+    /* Cleanup duplicated input parameters that were copied before. */
     SAFE_FREE(command->path);
     return r;
 }
@@ -147,9 +165,8 @@ error_cleanup:
  *
  * This function should be called after a previous Fapi_ExportPolicy_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] jsonPolicy The byte buffer the JSON-encoded policy is exported
- *              to
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] jsonPolicy The JSON-encoded policy. jsonPolicy MUST NOT be NULL.
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or jsonPolicy is NULL.
@@ -161,6 +178,13 @@ error_cleanup:
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_BAD_PATH if the used path in inappropriate-
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
  */
 TSS2_RC
 Fapi_ExportPolicy_Finish(
@@ -169,7 +193,7 @@ Fapi_ExportPolicy_Finish(
 {
     LOG_TRACE("called for context:%p", context);
 
-    TPMS_POLICY_HARNESS harness = {0};
+    TPMS_POLICY policy = {0};
     json_object *jso = NULL;
     TSS2_RC r;
 
@@ -182,6 +206,9 @@ Fapi_ExportPolicy_Finish(
 
     switch (context->state) {
         statecase(context->state, POLICY_EXPORT_READ_POLICY);
+            /* This is the entry point if a policy from the policy store shall
+               be exported. */
+            /* Load the policy to be exported from the policy store. */
             r = ifapi_policy_store_load_async(&context->pstore, &context->io,
                                               command->path);
             goto_if_error2(r, "Can't open: %s", error_cleanup,
@@ -189,20 +216,25 @@ Fapi_ExportPolicy_Finish(
             fallthrough;
 
         statecase(context->state, POLICY_EXPORT_READ_POLICY_FINISH);
-            r = ifapi_policy_store_load_finish(&context->pstore, &context->io, &harness);
+            r = ifapi_policy_store_load_finish(&context->pstore, &context->io, &policy);
             return_try_again(r);
             return_if_error_reset_state(r, "read_finish failed");
 
-            r = ifapi_json_TPMS_POLICY_HARNESS_serialize(&harness, &jso);
+            /* Serialize the policy to JSON. */
+            r = ifapi_json_TPMS_POLICY_serialize(&policy, &jso);
             goto_if_error(r, "Serialize policy", error_cleanup);
 
+            /* Duplicate the JSON string to be returned to the caller. */
             strdup_check(*jsonPolicy,
                     json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY),
                     r, error_cleanup);
 
             break;
         statecase(context->state, POLICY_EXPORT_READ_OBJECT);
+            /* This is the entry point if a policy for a key from the key store
+               shall be exported. */
             memset(&command->object, 0, sizeof(IFAPI_OBJECT));
+            /* Load the key meta data from the keystore. */
             r = ifapi_keystore_load_async(&context->keystore, &context->io,
                                           command->path);
             return_if_error2(r, "Could not open: %s", command->path);
@@ -214,14 +246,16 @@ Fapi_ExportPolicy_Finish(
             return_try_again(r);
             return_if_error_reset_state(r, "read_finish failed");
 
-            goto_if_null2(command->object.policy_harness,
+            goto_if_null2(command->object.policy,
                           "Object has no policy",
                           r, TSS2_FAPI_RC_BAD_PATH, error_cleanup);
 
-            r = ifapi_json_TPMS_POLICY_HARNESS_serialize(context->
-                cmd.ExportPolicy.object.policy_harness, &jso);
+            /* Serialize the policy to JSON. */
+            r = ifapi_json_TPMS_POLICY_serialize(context->
+                cmd.ExportPolicy.object.policy, &jso);
             goto_if_error(r, "Serialize policy", error_cleanup);
 
+            /* Duplicate the JSON string to be returned to the caller. */
             strdup_check(*jsonPolicy,
                     json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY),
                     r, error_cleanup);
@@ -229,26 +263,27 @@ Fapi_ExportPolicy_Finish(
 
         statecasedefault(context->state);
     }
-    goto_if_null2(*jsonPolicy, "Out of memory.", r, TSS2_FAPI_RC_MEMORY, error_cleanup);
 
+    /* Cleanup any intermediate results and state stored in the context. */
     context->state = _FAPI_STATE_INIT;
     if (jso)
         json_object_put(jso);
     ifapi_cleanup_ifapi_object(&command->object);
-    ifapi_cleanup_policy_harness(&harness);
+    ifapi_cleanup_policy(&policy);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);
     SAFE_FREE(command->path);
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 
 error_cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     if (command->object.objectType)
         ifapi_cleanup_ifapi_object(&command->object);
     if (jso)
         json_object_put(jso);
-    ifapi_cleanup_policy_harness(&harness);
+    ifapi_cleanup_policy(&policy);
     ifapi_cleanup_ifapi_object(&context->loadKey.auth_object);
     ifapi_cleanup_ifapi_object(context->loadKey.key_object);
     ifapi_cleanup_ifapi_object(&context->createPrimary.pkey_object);

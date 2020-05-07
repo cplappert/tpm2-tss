@@ -93,26 +93,14 @@ ifapi_get_tpm2b_public_from_pem(
     TPM2B_PUBLIC                *tpmPublic);
 
 TSS2_RC
-ifapi_crypto_aes_encrypt(
-    const uint8_t               *key,
-    size_t                      keySize,
-    const uint8_t               *iv,
-    uint8_t                     *buffer,
-    size_t                      bufferSize);
-
-TSS2_RC
-ifapi_crypto_aes_decrypt(
-    const uint8_t               *key,
-    size_t                      keySize,
-    const uint8_t               *iv,
-    uint8_t                     *buffer,
-    size_t                      bufferSize
-    );
-
-TSS2_RC
 ifapi_get_hash_alg_for_size(
     uint16_t                    size,
     TPMI_ALG_HASH               *hashAlgorithm);
+
+TSS2_RC
+ifapi_get_public_from_pem_cert(
+    const char*                 pem_cert,
+    TPM2B_PUBLIC *tpm_public);
 
 TSS2_RC
 ifapi_initialize_sign_public(
@@ -128,5 +116,11 @@ ifapi_verify_ek_cert(
     char* root_cert_pem,
     char* intermed_cert_pem,
     char* ek_cert_pem);
+
+TSS2_RC
+ifapi_get_tpm_key_fingerprint(
+    const TPM2B_PUBLIC *tpmPublicKey,
+    TPMI_ALG_HASH hashAlg,
+    TPM2B_DIGEST *fingerprint);
 
 #endif /* FAPI_CRYPTO_H */

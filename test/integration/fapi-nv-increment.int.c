@@ -23,7 +23,7 @@
 
 #define PASSWORD "abc"
 
-TSS2_RC
+static TSS2_RC
 auth_callback(
     FAPI_CONTEXT *context,
     char const *description,
@@ -37,13 +37,20 @@ auth_callback(
     return TSS2_RC_SUCCESS;
 }
 
-/** Test the FAPI function FAPI_Increment.
+/** Test the FAPI function FAPI_NvIncrement.
  *
  * Tested FAPI commands:
  *  - Fapi_Provision()
+ *  - Fapi_Import()
  *  - Fapi_CreateNv()
- *  - Fapi_NvIncrement()
+ *  - Fapi_SetAuthCB()
  *  - Fapi_ChangeAuth()
+ *  - Fapi_Delete()
+ *  - Fapi_NvIncrement()
+ *
+ * Tested Policies:
+ *  - PolicyAuthValue
+ *  - PolicyCommandCode
  *
  * @param[in,out] context The FAPI_CONTEXT.
  * @retval EXIT_FAILURE

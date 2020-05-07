@@ -32,10 +32,11 @@ strip_prefix(const char *in, ...)
     va_list ap;
     const char *prefix;
 
-    if (!in) return NULL;
+    if (!in)
+        return NULL;
 
     va_start(ap, in);
-    while((prefix = va_arg(ap, const char *)) != NULL) {
+    while ((prefix = va_arg(ap, const char *)) != NULL) {
         if (strncasecmp(in, prefix, strlen(prefix)) == 0) {
             in = &in[strlen(prefix)];
         }
@@ -45,7 +46,7 @@ strip_prefix(const char *in, ...)
     return in;
 }
 
-/* Deserialize accoring to the rules of parenttype and then filter against values
+/* Deserialize according to the rules of parenttype and then filter against values
    provided in the ... list. */
 #define SUBTYPE_FILTER(type, parenttype, ...) \
     TSS2_RC r; \
@@ -64,7 +65,8 @@ strip_prefix(const char *in, ...)
 
 /** Deserialize a TPMS_EMPTY .
  *
- * @param[in] in Structure to be deserialized.
+ * @param[out] out not used.
+ * @param[in]  jso not used.
  */
 TSS2_RC
 ifapi_json_TPMS_EMPTY_deserialize(json_object *jso, TPMS_EMPTY *out)
@@ -123,20 +125,20 @@ ifapi_hex_to_byte_ary(const char hex[], UINT32 vlen, BYTE val[])
  */
 TSS2_RC
 ifapi_json_byte_deserialize(
-    json_object *jso2,
+    json_object *jso,
     UINT32 max,
     BYTE *out,
     UINT16 *out_size)
 {
     TSS2_RC r;
 
-    json_type jso_type = json_object_get_type(jso2);
+    json_type jso_type = json_object_get_type(jso);
     if (jso_type == json_type_array) {
-        r = ifapi_json_BYTE_array_deserialize(max, jso2, out);
+        r = ifapi_json_BYTE_array_deserialize(max, jso, out);
         return_if_error(r, "BAD VALUE");
-        *out_size = json_object_array_length(jso2);
+        *out_size = json_object_array_length(jso);
     } else if (jso_type == json_type_string) {
-        const char *token = json_object_get_string(jso2);
+        const char *token = json_object_get_string(jso);
         int itoken = 0;
         if (strncmp(token, "0x", 2) == 0)
             itoken = 2;
@@ -210,13 +212,13 @@ ifapi_get_sub_object(json_object *jso, char *name, json_object **sub_jso)
  * @retval TSS2_RC_SUCCESS if json object represents a number.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object does not represent a number.
  */
-TSS2_RC
+static TSS2_RC
 get_number_from_json(json_object *jso, int64_t *num)
 {
     const char *token = json_object_get_string(jso);
     if (!get_number(token, num)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     return TSS2_RC_SUCCESS;
 }
@@ -253,9 +255,11 @@ get_boolean_from_json(json_object *jso, TPMI_YES_NO *value)
 
 /** Deserialize json object which represents a pcr selection.
  *
- * @param[in] in json array of pcr registers.
+ * @param[in]  jso json array of pcr registers.
  * @param[out] sizeofSelect size of bit mask for used pcr registers.
- * @param[out] pcrSelect byte arrray with bit mask.
+ * @param[out] pcrSelect byte array with bit mask.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_json_pcr_selection_deserialize(
@@ -288,8 +292,11 @@ ifapi_json_pcr_selection_deserialize(
 
 /** Deserialize an array of UINT8.
  *
- * @param[in]in json object to be deserialized.
+ * @param[in]  jso object to be deserialized.
  * @param[out] out the deserialized object.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_json_UINT8_ARY_deserialize(
@@ -311,8 +318,10 @@ ifapi_json_UINT8_ARY_deserialize(
 
 /** Deserialize a TPMS_PCR_SELECT variable.
  *
- * @param[in]in json object to be deserialized.
+ * @param[in]  jso  json object to be deserialized.
  * @param[out] out the deserialized object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_json_TPMS_PCR_SELECT_deserialize(json_object *jso,  TPMS_PCR_SELECT *out)
@@ -326,8 +335,10 @@ ifapi_json_TPMS_PCR_SELECT_deserialize(json_object *jso,  TPMS_PCR_SELECT *out)
 
 /** Deserialize a TPMS_PCR_SELECTION variable.
  *
- * @param[in]in json object to be deserialized.
+ * @param[in]  jso json object to be deserialized.
  * @param[out] out the deserialized object.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_json_TPMS_PCR_SELECTION_deserialize(json_object *jso,
@@ -340,14 +351,14 @@ ifapi_json_TPMS_PCR_SELECTION_deserialize(json_object *jso,
     memset(out, 0, sizeof(TPMS_PCR_SELECTION));
     if (!ifapi_get_sub_object(jso, "hash", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hash);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hash);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "pcrSelect", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     return ifapi_json_pcr_selection_deserialize(jso2, &out->sizeofSelect,
             &out->pcrSelect[0]);
@@ -355,8 +366,11 @@ ifapi_json_TPMS_PCR_SELECTION_deserialize(json_object *jso,
 
 /** Deserialize an array of BYTE structures.
  *
- * @param[in] in Structure.
- * @param[in] count Number of structures to be deserialized.
+ * @param[in] max the maximal number of bytess to be deserialized.
+ * @param[in] jso the JSON object with the byte array.
+ * @param[in] out the byte array for deserialization.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_json_BYTE_array_deserialize(size_t max, json_object *jso, BYTE *out)
@@ -395,12 +409,12 @@ ifapi_json_BYTE_deserialize(json_object *jso, BYTE *out)
     int64_t i64;
     if (!get_number(token, &i64)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     *out = (BYTE) i64;
     if ((int64_t)*out != i64) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     return TSS2_RC_SUCCESS;
 }
@@ -420,12 +434,12 @@ ifapi_json_UINT8_deserialize(json_object *jso, UINT8 *out)
     int64_t i64;
     if (!get_number(token, &i64)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     *out = (UINT8) i64;
     if ((int64_t)*out != i64) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     return TSS2_RC_SUCCESS;
 }
@@ -470,12 +484,12 @@ ifapi_json_UINT32_deserialize(json_object *jso, UINT32 *out)
     int64_t i64;
     if (!get_number(token, &i64)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     *out = (UINT32) i64;
     if ((int64_t)*out != i64) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     return TSS2_RC_SUCCESS;
 }
@@ -934,7 +948,7 @@ ifapi_json_TPM2_PT_PCR_deserialize(json_object *jso, TPM2_PT_PCR *out)
     return ifapi_json_UINT32_deserialize(jso, out);
 }
 
-/*** Table 26 - Definition of Types for HandlesTable 26 - Definition of Types for Handles ***/
+/*** Table 26 .Definition of Types for HandlesTable ***/
 
 /**  Deserialize a TPM2_HANDLE json object.
  *
@@ -953,12 +967,12 @@ ifapi_json_TPM2_HANDLE_deserialize(json_object *jso, TPM2_HANDLE *out)
         *out = (TPM2_HANDLE) i64;
         if ((int64_t)*out != i64) {
             LOG_ERROR("Bad value");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         return TSS2_RC_SUCCESS;
     } else {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
 }
 
@@ -1152,12 +1166,12 @@ ifapi_json_TPMA_LOCALITY_deserialize(json_object *jso, TPMA_LOCALITY *out)
 }
 
 /** Deserialize a TPMI_YES_NO json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_YES_NO_deserialize(json_object *jso, TPMI_YES_NO *out)
 {
@@ -1183,12 +1197,12 @@ ifapi_json_TPMI_YES_NO_deserialize(json_object *jso, TPMI_YES_NO *out)
 }
 
 /** Deserialize a TPMI_RH_HIERARCHY json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_RH_HIERARCHY_deserialize(json_object *jso,
         TPMI_RH_HIERARCHY *out)
@@ -1217,8 +1231,10 @@ ifapi_json_TPMI_RH_HIERARCHY_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMI_RH_NV_INDEX json object.
-*
-*/
+ *
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ */
 TSS2_RC
 ifapi_json_TPMI_RH_NV_INDEX_deserialize(json_object *jso, TPMI_RH_NV_INDEX *out)
 {
@@ -1226,12 +1242,12 @@ ifapi_json_TPMI_RH_NV_INDEX_deserialize(json_object *jso, TPMI_RH_NV_INDEX *out)
 }
 
 /** Deserialize a TPMI_ALG_HASH json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_HASH_deserialize(json_object *jso, TPMI_ALG_HASH *out)
 {
@@ -1240,12 +1256,12 @@ ifapi_json_TPMI_ALG_HASH_deserialize(json_object *jso, TPMI_ALG_HASH *out)
 }
 
 /** Deserialize a  TPMI_ALG_SYM json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_SYM_deserialize(json_object *jso, TPMI_ALG_SYM *out)
 {
@@ -1254,12 +1270,12 @@ ifapi_json_TPMI_ALG_SYM_deserialize(json_object *jso, TPMI_ALG_SYM *out)
 }
 
 /** Deserialize a TPMI_ALG_SYM_OBJECT json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_SYM_OBJECT_deserialize(json_object *jso,
         TPMI_ALG_SYM_OBJECT *out)
@@ -1269,12 +1285,12 @@ ifapi_json_TPMI_ALG_SYM_OBJECT_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMI_ALG_SYM_MODE json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_SYM_MODE_deserialize(json_object *jso,
         TPMI_ALG_SYM_MODE *out)
@@ -1284,12 +1300,12 @@ ifapi_json_TPMI_ALG_SYM_MODE_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMI_ALG_KDF json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_KDF_deserialize(json_object *jso, TPMI_ALG_KDF *out)
 {
@@ -1298,12 +1314,12 @@ ifapi_json_TPMI_ALG_KDF_deserialize(json_object *jso, TPMI_ALG_KDF *out)
 }
 
 /** Deserialize a TPMI_ALG_SIG_SCHEME json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_SIG_SCHEME_deserialize(json_object *jso,
         TPMI_ALG_SIG_SCHEME *out)
@@ -1316,10 +1332,12 @@ ifapi_json_TPMI_ALG_SIG_SCHEME_deserialize(json_object *jso,
 /** Deserialize a TPMU_HA json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type of the HA object.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_HA_deserialize(
@@ -1373,6 +1391,7 @@ ifapi_json_TPMU_HA_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_HA_deserialize(json_object *jso,  TPMT_HA *out)
@@ -1384,14 +1403,14 @@ ifapi_json_TPMT_HA_deserialize(json_object *jso,  TPMT_HA *out)
 
     if (!ifapi_get_sub_object(jso, "hashAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
     return_if_error(r, "BAD VALUE");
     if (out->hashAlg != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "digest", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_HA_deserialize(out->hashAlg, jso2, &out->digest);
         return_if_error(r, "BAD VALUE");
@@ -1407,6 +1426,7 @@ ifapi_json_TPMT_HA_deserialize(json_object *jso,  TPMT_HA *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_DIGEST_deserialize(json_object *jso,  TPM2B_DIGEST *out)
@@ -1416,7 +1436,7 @@ ifapi_json_TPM2B_DIGEST_deserialize(json_object *jso,  TPM2B_DIGEST *out)
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, sizeof(TPMU_HA), (BYTE *)&out->buffer,
+    r = ifapi_json_byte_deserialize(jso, sizeof(TPMU_HA), (BYTE *)&out->buffer,
                                      &size);
     return_if_error(r, "byte serialize");
 
@@ -1432,6 +1452,7 @@ ifapi_json_TPM2B_DIGEST_deserialize(json_object *jso,  TPM2B_DIGEST *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_DATA_deserialize(json_object *jso,  TPM2B_DATA *out)
@@ -1441,7 +1462,7 @@ ifapi_json_TPM2B_DATA_deserialize(json_object *jso,  TPM2B_DATA *out)
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, sizeof(TPMT_HA), (BYTE *)&out->buffer,
+    r = ifapi_json_byte_deserialize(jso, sizeof(TPMT_HA), (BYTE *)&out->buffer,
                                      &size);
     return_if_error(r, "byte serialize");
 
@@ -1451,15 +1472,16 @@ ifapi_json_TPM2B_DATA_deserialize(json_object *jso,  TPM2B_DATA *out)
     return TSS2_RC_SUCCESS;
 }
 
-/*** Table 75 - Definition of Types for TPM2B_NONCETable 75 - Definition of Types for TPM2B_NONCE ***/
+/*** Table 75 - Definition of Types for TPM2B_NONCE ***/
 
 /** Deserialize a TPM2B_NONCE json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPM2B_NONCE_deserialize(json_object *jso, TPM2B_NONCE *out)
 {
@@ -1467,15 +1489,16 @@ ifapi_json_TPM2B_NONCE_deserialize(json_object *jso, TPM2B_NONCE *out)
     return ifapi_json_TPM2B_DIGEST_deserialize(jso, out);
 }
 
-/*** Table 77 - Definition of Types for TPM2B_OPERANDTable 77 - Definition of Types for TPM2B_OPERAND ***/
+/*** Table 77 - Definition of Types for TPM2B_OPERAND ***/
 
 /** Deserialize a TPM2B_OPERAND json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPM2B_OPERAND_deserialize(json_object *jso, TPM2B_OPERAND *out)
 {
@@ -1489,6 +1512,7 @@ ifapi_json_TPM2B_OPERAND_deserialize(json_object *jso, TPM2B_OPERAND *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_EVENT_deserialize(json_object *jso,  TPM2B_EVENT *out)
@@ -1498,7 +1522,7 @@ ifapi_json_TPM2B_EVENT_deserialize(json_object *jso,  TPM2B_EVENT *out)
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, 1024, (BYTE *)&out->buffer, &size);
+    r = ifapi_json_byte_deserialize(jso, 1024, (BYTE *)&out->buffer, &size);
     return_if_error(r, "byte serialize");
 
     out->size = size;
@@ -1513,6 +1537,7 @@ ifapi_json_TPM2B_EVENT_deserialize(json_object *jso,  TPM2B_EVENT *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_MAX_NV_BUFFER_deserialize(json_object *jso,
@@ -1523,7 +1548,7 @@ ifapi_json_TPM2B_MAX_NV_BUFFER_deserialize(json_object *jso,
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, TPM2_MAX_NV_BUFFER_SIZE,
+    r = ifapi_json_byte_deserialize(jso, TPM2_MAX_NV_BUFFER_SIZE,
                                      (BYTE *)&out->buffer, &size);
     return_if_error(r, "byte serialize");
 
@@ -1539,6 +1564,7 @@ ifapi_json_TPM2B_MAX_NV_BUFFER_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_NAME_deserialize(json_object *jso,  TPM2B_NAME *out)
@@ -1548,7 +1574,7 @@ ifapi_json_TPM2B_NAME_deserialize(json_object *jso,  TPM2B_NAME *out)
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, sizeof(TPMU_NAME), (BYTE *)&out->name,
+    r = ifapi_json_byte_deserialize(jso, sizeof(TPMU_NAME), (BYTE *)&out->name,
                                      &size);
     return_if_error(r, "byte serialize");
 
@@ -1564,6 +1590,7 @@ ifapi_json_TPM2B_NAME_deserialize(json_object *jso,  TPM2B_NAME *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_TK_CREATION_deserialize(json_object *jso,
@@ -1576,9 +1603,9 @@ ifapi_json_TPMT_TK_CREATION_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "tag", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2_ST_deserialize(jso2, &out->tag);
+    r = ifapi_json_TPM2_ST_deserialize(jso2, &out->tag);
     return_if_error(r, "BAD VALUE");
     if (out != NULL && out->tag != TPM2_ST_CREATION) {
         LOG_ERROR("BAD VALUE %zu != %zu", (size_t)out->tag, (size_t)TPM2_ST_CREATION);
@@ -1586,16 +1613,16 @@ ifapi_json_TPMT_TK_CREATION_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "hierarchy", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_RH_HIERARCHY_deserialize(jso2, &out->hierarchy);
+    r = ifapi_json_TPMI_RH_HIERARCHY_deserialize(jso2, &out->hierarchy);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "digest", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->digest);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->digest);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1607,6 +1634,7 @@ ifapi_json_TPMT_TK_CREATION_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_TK_VERIFIED_deserialize(json_object *jso,
@@ -1619,9 +1647,9 @@ ifapi_json_TPMT_TK_VERIFIED_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "tag", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2_ST_deserialize(jso2, &out->tag);
+    r = ifapi_json_TPM2_ST_deserialize(jso2, &out->tag);
     return_if_error(r, "BAD VALUE");
     if (out != NULL && out->tag != TPM2_ST_VERIFIED) {
         LOG_ERROR("BAD VALUE %zu != %zu", (size_t)out->tag, (size_t)TPM2_ST_VERIFIED);
@@ -1629,16 +1657,16 @@ ifapi_json_TPMT_TK_VERIFIED_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "hierarchy", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_RH_HIERARCHY_deserialize(jso2, &out->hierarchy);
+    r = ifapi_json_TPMI_RH_HIERARCHY_deserialize(jso2, &out->hierarchy);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "digest", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->digest);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->digest);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1650,6 +1678,7 @@ ifapi_json_TPMT_TK_VERIFIED_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_DIGEST_VALUES_deserialize(json_object *jso,
@@ -1690,6 +1719,7 @@ ifapi_json_TPML_DIGEST_VALUES_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPML_PCR_SELECTION_deserialize(json_object *jso,
@@ -1730,6 +1760,7 @@ ifapi_json_TPML_PCR_SELECTION_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CLOCK_INFO_deserialize(json_object *jso,  TPMS_CLOCK_INFO *out)
@@ -1741,30 +1772,30 @@ ifapi_json_TPMS_CLOCK_INFO_deserialize(json_object *jso,  TPMS_CLOCK_INFO *out)
 
     if (!ifapi_get_sub_object(jso, "clock", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT64_deserialize(jso2, &out->clock);
+    r = ifapi_json_UINT64_deserialize(jso2, &out->clock);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "resetCount", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT32_deserialize(jso2, &out->resetCount);
+    r = ifapi_json_UINT32_deserialize(jso2, &out->resetCount);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "restartCount", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT32_deserialize(jso2, &out->restartCount);
+    r = ifapi_json_UINT32_deserialize(jso2, &out->restartCount);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "safe", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_YES_NO_deserialize(jso2, &out->safe);
+    r = ifapi_json_TPMI_YES_NO_deserialize(jso2, &out->safe);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1776,6 +1807,7 @@ ifapi_json_TPMS_CLOCK_INFO_deserialize(json_object *jso,  TPMS_CLOCK_INFO *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_TIME_INFO_deserialize(json_object *jso,  TPMS_TIME_INFO *out)
@@ -1787,16 +1819,16 @@ ifapi_json_TPMS_TIME_INFO_deserialize(json_object *jso,  TPMS_TIME_INFO *out)
 
     if (!ifapi_get_sub_object(jso, "time", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT64_deserialize(jso2, &out->time);
+    r = ifapi_json_UINT64_deserialize(jso2, &out->time);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "clockInfo", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMS_CLOCK_INFO_deserialize(jso2, &out->clockInfo);
+    r = ifapi_json_TPMS_CLOCK_INFO_deserialize(jso2, &out->clockInfo);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1808,6 +1840,7 @@ ifapi_json_TPMS_TIME_INFO_deserialize(json_object *jso,  TPMS_TIME_INFO *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_TIME_ATTEST_INFO_deserialize(json_object *jso,
@@ -1820,16 +1853,16 @@ ifapi_json_TPMS_TIME_ATTEST_INFO_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "time", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMS_TIME_INFO_deserialize(jso2, &out->time);
+    r = ifapi_json_TPMS_TIME_INFO_deserialize(jso2, &out->time);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "firmwareVersion", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT64_deserialize(jso2, &out->firmwareVersion);
+    r = ifapi_json_UINT64_deserialize(jso2, &out->firmwareVersion);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1841,6 +1874,7 @@ ifapi_json_TPMS_TIME_ATTEST_INFO_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CERTIFY_INFO_deserialize(json_object *jso,
@@ -1853,16 +1887,16 @@ ifapi_json_TPMS_CERTIFY_INFO_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "name", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_NAME_deserialize(jso2, &out->name);
+    r = ifapi_json_TPM2B_NAME_deserialize(jso2, &out->name);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "qualifiedName", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_NAME_deserialize(jso2, &out->qualifiedName);
+    r = ifapi_json_TPM2B_NAME_deserialize(jso2, &out->qualifiedName);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1874,6 +1908,7 @@ ifapi_json_TPMS_CERTIFY_INFO_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_QUOTE_INFO_deserialize(json_object *jso,  TPMS_QUOTE_INFO *out)
@@ -1885,16 +1920,16 @@ ifapi_json_TPMS_QUOTE_INFO_deserialize(json_object *jso,  TPMS_QUOTE_INFO *out)
 
     if (!ifapi_get_sub_object(jso, "pcrSelect", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPML_PCR_SELECTION_deserialize(jso2, &out->pcrSelect);
+    r = ifapi_json_TPML_PCR_SELECTION_deserialize(jso2, &out->pcrSelect);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "pcrDigest", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->pcrDigest);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->pcrDigest);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1906,6 +1941,7 @@ ifapi_json_TPMS_QUOTE_INFO_deserialize(json_object *jso,  TPMS_QUOTE_INFO *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_COMMAND_AUDIT_INFO_deserialize(json_object *jso,
@@ -1918,30 +1954,30 @@ ifapi_json_TPMS_COMMAND_AUDIT_INFO_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "auditCounter", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT64_deserialize(jso2, &out->auditCounter);
+    r = ifapi_json_UINT64_deserialize(jso2, &out->auditCounter);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "digestAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2_ALG_ID_deserialize(jso2, &out->digestAlg);
+    r = ifapi_json_TPM2_ALG_ID_deserialize(jso2, &out->digestAlg);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "auditDigest", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->auditDigest);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->auditDigest);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "commandDigest", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->commandDigest);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->commandDigest);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1953,6 +1989,7 @@ ifapi_json_TPMS_COMMAND_AUDIT_INFO_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SESSION_AUDIT_INFO_deserialize(json_object *jso,
@@ -1965,16 +2002,16 @@ ifapi_json_TPMS_SESSION_AUDIT_INFO_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "exclusiveSession", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_YES_NO_deserialize(jso2, &out->exclusiveSession);
+    r = ifapi_json_TPMI_YES_NO_deserialize(jso2, &out->exclusiveSession);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "sessionDigest", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->sessionDigest);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->sessionDigest);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -1986,6 +2023,7 @@ ifapi_json_TPMS_SESSION_AUDIT_INFO_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CREATION_INFO_deserialize(json_object *jso,
@@ -1998,16 +2036,16 @@ ifapi_json_TPMS_CREATION_INFO_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "objectName", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_NAME_deserialize(jso2, &out->objectName);
+    r = ifapi_json_TPM2B_NAME_deserialize(jso2, &out->objectName);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "creationHash", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->creationHash);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->creationHash);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -2019,6 +2057,7 @@ ifapi_json_TPMS_CREATION_INFO_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_NV_CERTIFY_INFO_deserialize(json_object *jso,
@@ -2031,35 +2070,35 @@ ifapi_json_TPMS_NV_CERTIFY_INFO_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "indexName", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_NAME_deserialize(jso2, &out->indexName);
+    r = ifapi_json_TPM2B_NAME_deserialize(jso2, &out->indexName);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "offset", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT16_deserialize(jso2, &out->offset);
+    r = ifapi_json_UINT16_deserialize(jso2, &out->offset);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "nvContents", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_MAX_NV_BUFFER_deserialize(jso2, &out->nvContents);
+    r = ifapi_json_TPM2B_MAX_NV_BUFFER_deserialize(jso2, &out->nvContents);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 }
 
 /** Deserialize a TPMI_ST_ATTEST json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ST_ATTEST_deserialize(json_object *jso, TPMI_ST_ATTEST *out)
 {
@@ -2072,10 +2111,12 @@ ifapi_json_TPMI_ST_ATTEST_deserialize(json_object *jso, TPMI_ST_ATTEST *out)
 /** Deserialize a TPMU_ATTEST json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the attest.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_ATTEST_deserialize(
@@ -2111,6 +2152,7 @@ ifapi_json_TPMU_ATTEST_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ATTEST_deserialize(json_object *jso,  TPMS_ATTEST *out)
@@ -2122,48 +2164,48 @@ ifapi_json_TPMS_ATTEST_deserialize(json_object *jso,  TPMS_ATTEST *out)
 
     if (!ifapi_get_sub_object(jso, "magic", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2_GENERATED_deserialize(jso2, &out->magic);
+    r = ifapi_json_TPM2_GENERATED_deserialize(jso2, &out->magic);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "type", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ST_ATTEST_deserialize(jso2, &out->type);
+    r = ifapi_json_TPMI_ST_ATTEST_deserialize(jso2, &out->type);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "qualifiedSigner", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_NAME_deserialize(jso2, &out->qualifiedSigner);
+    r = ifapi_json_TPM2B_NAME_deserialize(jso2, &out->qualifiedSigner);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "extraData", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DATA_deserialize(jso2, &out->extraData);
+    r = ifapi_json_TPM2B_DATA_deserialize(jso2, &out->extraData);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "clockInfo", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMS_CLOCK_INFO_deserialize(jso2, &out->clockInfo);
+    r = ifapi_json_TPMS_CLOCK_INFO_deserialize(jso2, &out->clockInfo);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "firmwareVersion", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT64_deserialize(jso2, &out->firmwareVersion);
+    r = ifapi_json_UINT64_deserialize(jso2, &out->firmwareVersion);
     return_if_error(r, "BAD VALUE");
     if (!ifapi_get_sub_object(jso, "attested", &jso2)) {
         LOG_ERROR("BAD VALUE");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     r = ifapi_json_TPMU_ATTEST_deserialize(out->type, jso2, &out->attested);
     return_if_error(r, "BAD VALUE");
@@ -2173,8 +2215,10 @@ ifapi_json_TPMS_ATTEST_deserialize(json_object *jso,  TPMS_ATTEST *out)
 }
 
 /** Deserialize a TPMI_AES_KEY_BITS json object.
-*
-*/
+ *
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ */
 TSS2_RC
 ifapi_json_TPMI_AES_KEY_BITS_deserialize(json_object *jso, TPMI_AES_KEY_BITS *out)
 {
@@ -2185,6 +2229,7 @@ ifapi_json_TPMI_AES_KEY_BITS_deserialize(json_object *jso, TPMI_AES_KEY_BITS *ou
 /** Deserialize a TPMU_SYM_KEY_BITS json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the symmetric algorithm.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
@@ -2215,6 +2260,7 @@ ifapi_json_TPMU_SYM_KEY_BITS_deserialize(
 /** Deserialize a TPMU_SYM_MODE json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the symmetric algorithm.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
@@ -2246,6 +2292,7 @@ ifapi_json_TPMU_SYM_MODE_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_SYM_DEF_deserialize(json_object *jso,  TPMT_SYM_DEF *out)
@@ -2257,14 +2304,14 @@ ifapi_json_TPMT_SYM_DEF_deserialize(json_object *jso,  TPMT_SYM_DEF *out)
 
     if (!ifapi_get_sub_object(jso, "algorithm", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_SYM_deserialize(jso2, &out->algorithm);
+    r = ifapi_json_TPMI_ALG_SYM_deserialize(jso2, &out->algorithm);
     return_if_error(r, "BAD VALUE");
     if (out->algorithm != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "keyBits", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_SYM_KEY_BITS_deserialize(out->algorithm, jso2,
                 &out->keyBits);
@@ -2274,7 +2321,7 @@ ifapi_json_TPMT_SYM_DEF_deserialize(json_object *jso,  TPMT_SYM_DEF *out)
     if (out->algorithm != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "mode", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_SYM_MODE_deserialize(out->algorithm, jso2, &out->mode);
         return_if_error(r, "BAD VALUE");
@@ -2290,6 +2337,7 @@ ifapi_json_TPMT_SYM_DEF_deserialize(json_object *jso,  TPMT_SYM_DEF *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(json_object *jso,
@@ -2302,14 +2350,14 @@ ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "algorithm", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_SYM_OBJECT_deserialize(jso2, &out->algorithm);
+    r = ifapi_json_TPMI_ALG_SYM_OBJECT_deserialize(jso2, &out->algorithm);
     return_if_error(r, "BAD VALUE");
     if (out->algorithm != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "keyBits", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_SYM_KEY_BITS_deserialize(out->algorithm, jso2,
                 &out->keyBits);
@@ -2319,7 +2367,7 @@ ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(json_object *jso,
     if (out->algorithm != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "mode", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_SYM_MODE_deserialize(out->algorithm, jso2, &out->mode);
         return_if_error(r, "BAD VALUE");
@@ -2335,6 +2383,7 @@ ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SYMCIPHER_PARMS_deserialize(json_object *jso,
@@ -2347,9 +2396,9 @@ ifapi_json_TPMS_SYMCIPHER_PARMS_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "sym", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->sym);
+    r = ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->sym);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -2361,6 +2410,7 @@ ifapi_json_TPMS_SYMCIPHER_PARMS_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_HASH_deserialize(json_object *jso,
@@ -2373,9 +2423,9 @@ ifapi_json_TPMS_SCHEME_HASH_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "hashAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -2387,6 +2437,7 @@ ifapi_json_TPMS_SCHEME_HASH_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_ECDAA_deserialize(json_object *jso,
@@ -2399,28 +2450,28 @@ ifapi_json_TPMS_SCHEME_ECDAA_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "hashAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "count", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT16_deserialize(jso2, &out->count);
+    r = ifapi_json_UINT16_deserialize(jso2, &out->count);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 }
 
 /** Deserialize a TPMI_ALG_KEYEDHASH_SCHEME json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_KEYEDHASH_SCHEME_deserialize(json_object *jso,
         TPMI_ALG_KEYEDHASH_SCHEME *out)
@@ -2429,15 +2480,16 @@ ifapi_json_TPMI_ALG_KEYEDHASH_SCHEME_deserialize(json_object *jso,
         TPM2_ALG_HMAC, TPM2_ALG_XOR, TPM2_ALG_NULL);
 }
 
-/*** Table 144 - Definition of Types for HMAC_SIG_SCHEMETable 144 - Definition of Types for HMAC_SIG_SCHEME ***/
+/*** Table 144 - Definition of Types for HMAC_SIG_SCHEME ***/
 
 /** Deserialize a TPMS_SCHEME_HMAC json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_HMAC_deserialize(json_object *jso, TPMS_SCHEME_HMAC *out)
 {
@@ -2451,6 +2503,7 @@ ifapi_json_TPMS_SCHEME_HMAC_deserialize(json_object *jso, TPMS_SCHEME_HMAC *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_XOR_deserialize(json_object *jso,  TPMS_SCHEME_XOR *out)
@@ -2462,16 +2515,16 @@ ifapi_json_TPMS_SCHEME_XOR_deserialize(json_object *jso,  TPMS_SCHEME_XOR *out)
 
     if (!ifapi_get_sub_object(jso, "hashAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hashAlg);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "kdf", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_KDF_deserialize(jso2, &out->kdf);
+    r = ifapi_json_TPMI_ALG_KDF_deserialize(jso2, &out->kdf);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -2480,10 +2533,12 @@ ifapi_json_TPMS_SCHEME_XOR_deserialize(json_object *jso,  TPMS_SCHEME_XOR *out)
 /** Deserialize a TPMU_SCHEME_KEYEDHASH json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the keyedhash scheme.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_SCHEME_KEYEDHASH_deserialize(
@@ -2513,6 +2568,7 @@ ifapi_json_TPMU_SCHEME_KEYEDHASH_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_KEYEDHASH_SCHEME_deserialize(json_object *jso,
@@ -2525,14 +2581,14 @@ ifapi_json_TPMT_KEYEDHASH_SCHEME_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_KEYEDHASH_SCHEME_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMI_ALG_KEYEDHASH_SCHEME_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
     if (out->scheme != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "details", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_SCHEME_KEYEDHASH_deserialize(out->scheme, jso2,
                 &out->details);
@@ -2543,15 +2599,16 @@ ifapi_json_TPMT_KEYEDHASH_SCHEME_deserialize(json_object *jso,
     return TSS2_RC_SUCCESS;
 }
 
-/*** Table 148 - Definition of Table 148 - Definition of  Types for RSA Signature Schemes ***/
+/*** Table 148 - Definition of  Types for RSA Signature Schemes ***/
 
 /** Deserialize a TPMS_SIG_SCHEME_RSASSA json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_RSASSA_deserialize(json_object *jso,
         TPMS_SIG_SCHEME_RSASSA *out)
@@ -2561,12 +2618,13 @@ ifapi_json_TPMS_SIG_SCHEME_RSASSA_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIG_SCHEME_RSAPSS json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_RSAPSS_deserialize(json_object *jso,
         TPMS_SIG_SCHEME_RSAPSS *out)
@@ -2575,15 +2633,16 @@ ifapi_json_TPMS_SIG_SCHEME_RSAPSS_deserialize(json_object *jso,
     return ifapi_json_TPMS_SCHEME_HASH_deserialize(jso, out);
 }
 
-/*** Table 149 - Definition of Table 149 - Definition of  Types for ECC Signature Schemes ***/
+/*** Table 149 - Definition of  Types for ECC Signature Schemes ***/
 
 /** Deserialize a TPMS_SIG_SCHEME_ECDSA json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_ECDSA_deserialize(json_object *jso,
         TPMS_SIG_SCHEME_ECDSA *out)
@@ -2593,12 +2652,13 @@ ifapi_json_TPMS_SIG_SCHEME_ECDSA_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIG_SCHEME_SM2 json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_SM2_deserialize(json_object *jso,
         TPMS_SIG_SCHEME_SM2 *out)
@@ -2608,12 +2668,13 @@ ifapi_json_TPMS_SIG_SCHEME_SM2_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIG_SCHEME_ECSCHNORR json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_ECSCHNORR_deserialize(json_object *jso,
         TPMS_SIG_SCHEME_ECSCHNORR *out)
@@ -2623,12 +2684,13 @@ ifapi_json_TPMS_SIG_SCHEME_ECSCHNORR_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIG_SCHEME_ECDAA json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIG_SCHEME_ECDAA_deserialize(json_object *jso,
         TPMS_SIG_SCHEME_ECDAA *out)
@@ -2640,10 +2702,12 @@ ifapi_json_TPMS_SIG_SCHEME_ECDAA_deserialize(json_object *jso,
 /** Deserialize a TPMU_SIG_SCHEME json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the signature scheme.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_SIG_SCHEME_deserialize(
@@ -2683,6 +2747,7 @@ ifapi_json_TPMU_SIG_SCHEME_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_SIG_SCHEME_deserialize(json_object *jso,  TPMT_SIG_SCHEME *out)
@@ -2694,14 +2759,14 @@ ifapi_json_TPMT_SIG_SCHEME_deserialize(json_object *jso,  TPMT_SIG_SCHEME *out)
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_SIG_SCHEME_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMI_ALG_SIG_SCHEME_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
     if (out->scheme != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "details", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_SIG_SCHEME_deserialize(out->scheme, jso2, &out->details);
         return_if_error(r, "BAD VALUE");
@@ -2711,15 +2776,16 @@ ifapi_json_TPMT_SIG_SCHEME_deserialize(json_object *jso,  TPMT_SIG_SCHEME *out)
     return TSS2_RC_SUCCESS;
 }
 
-/*** Table 152 - Definition of Types for Table 152 - Definition of Types for  Encryption Schemes ***/
+/*** Table 152 - Definition of Types for  Encryption Schemes ***/
 
 /** Deserialize a TPMS_ENC_SCHEME_OAEP json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_ENC_SCHEME_OAEP_deserialize(json_object *jso,
         TPMS_ENC_SCHEME_OAEP *out)
@@ -2729,12 +2795,12 @@ ifapi_json_TPMS_ENC_SCHEME_OAEP_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_ENC_SCHEME_RSAES json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMS_ENC_SCHEME_RSAES_deserialize(json_object *jso,
         TPMS_ENC_SCHEME_RSAES *out)
@@ -2743,15 +2809,16 @@ ifapi_json_TPMS_ENC_SCHEME_RSAES_deserialize(json_object *jso,
     return ifapi_json_TPMS_EMPTY_deserialize(jso, out);
 }
 
-/*** Table 153 - Definition of Types for Table 153 - Definition of Types for  ECC Key Exchange ***/
+/*** Table 153 - Definition of Types for  ECC Key Exchange ***/
 
 /** Deserialize a TPMS_KEY_SCHEME_ECDH json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_KEY_SCHEME_ECDH_deserialize(json_object *jso,
         TPMS_KEY_SCHEME_ECDH *out)
@@ -2760,15 +2827,16 @@ ifapi_json_TPMS_KEY_SCHEME_ECDH_deserialize(json_object *jso,
     return ifapi_json_TPMS_SCHEME_HASH_deserialize(jso, out);
 }
 
-/*** Table 154 - Definition of Types for KDF SchemesTable 154 - Definition of Types for KDF Schemes ***/
+/*** Table 154 - Definition of Types for KDF Schemes ***/
 
 /** Deserialize a TPMS_SCHEME_MGF1 json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_MGF1_deserialize(json_object *jso, TPMS_SCHEME_MGF1 *out)
 {
@@ -2777,12 +2845,13 @@ ifapi_json_TPMS_SCHEME_MGF1_deserialize(json_object *jso, TPMS_SCHEME_MGF1 *out)
 }
 
 /** Deserialize a TPMS_SCHEME_KDF1_SP800_56A json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_KDF1_SP800_56A_deserialize(json_object *jso,
         TPMS_SCHEME_KDF1_SP800_56A *out)
@@ -2792,12 +2861,13 @@ ifapi_json_TPMS_SCHEME_KDF1_SP800_56A_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SCHEME_KDF1_SP800_108 json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SCHEME_KDF1_SP800_108_deserialize(json_object *jso,
         TPMS_SCHEME_KDF1_SP800_108 *out)
@@ -2809,10 +2879,12 @@ ifapi_json_TPMS_SCHEME_KDF1_SP800_108_deserialize(json_object *jso,
 /** Deserialize a TPMU_KDF_SCHEME json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the KDF scheme.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_KDF_SCHEME_deserialize(
@@ -2846,6 +2918,7 @@ ifapi_json_TPMU_KDF_SCHEME_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_KDF_SCHEME_deserialize(json_object *jso,  TPMT_KDF_SCHEME *out)
@@ -2857,14 +2930,14 @@ ifapi_json_TPMT_KDF_SCHEME_deserialize(json_object *jso,  TPMT_KDF_SCHEME *out)
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_KDF_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMI_ALG_KDF_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
     if (out->scheme != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "details", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_KDF_SCHEME_deserialize(out->scheme, jso2, &out->details);
         return_if_error(r, "BAD VALUE");
@@ -2878,9 +2951,11 @@ ifapi_json_TPMT_KDF_SCHEME_deserialize(json_object *jso,  TPMT_KDF_SCHEME *out)
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
  * @param[in]  jso the json object to be deserialized.
+ * @param[in]  selector The type the scheme.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_ASYM_SCHEME_deserialize(
@@ -2919,12 +2994,12 @@ ifapi_json_TPMU_ASYM_SCHEME_deserialize(
 }
 
 /** Deserialize a TPMI_ALG_RSA_SCHEME json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_RSA_SCHEME_deserialize(json_object *jso,
         TPMI_ALG_RSA_SCHEME *out)
@@ -2939,6 +3014,7 @@ ifapi_json_TPMI_ALG_RSA_SCHEME_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_RSA_SCHEME_deserialize(json_object *jso,  TPMT_RSA_SCHEME *out)
@@ -2950,14 +3026,14 @@ ifapi_json_TPMT_RSA_SCHEME_deserialize(json_object *jso,  TPMT_RSA_SCHEME *out)
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_RSA_SCHEME_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMI_ALG_RSA_SCHEME_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
     if (out->scheme != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "details", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_ASYM_SCHEME_deserialize(out->scheme, jso2, &out->details);
         return_if_error(r, "BAD VALUE");
@@ -2968,12 +3044,12 @@ ifapi_json_TPMT_RSA_SCHEME_deserialize(json_object *jso,  TPMT_RSA_SCHEME *out)
 }
 
 /** Deserialize a TPMI_ALG_RSA_DECRYPT json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_RSA_DECRYPT_deserialize(json_object *jso,
         TPMI_ALG_RSA_DECRYPT *out)
@@ -2988,6 +3064,7 @@ ifapi_json_TPMI_ALG_RSA_DECRYPT_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_RSA_DECRYPT_deserialize(json_object *jso,
@@ -3000,14 +3077,14 @@ ifapi_json_TPMT_RSA_DECRYPT_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_RSA_DECRYPT_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMI_ALG_RSA_DECRYPT_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
     if (out->scheme != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "details", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_ASYM_SCHEME_deserialize(out->scheme, jso2, &out->details);
         return_if_error(r, "BAD VALUE");
@@ -3023,6 +3100,7 @@ ifapi_json_TPMT_RSA_DECRYPT_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_PUBLIC_KEY_RSA_deserialize(json_object *jso,
@@ -3033,7 +3111,7 @@ ifapi_json_TPM2B_PUBLIC_KEY_RSA_deserialize(json_object *jso,
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, TPM2_MAX_RSA_KEY_BYTES,
+    r = ifapi_json_byte_deserialize(jso, TPM2_MAX_RSA_KEY_BYTES,
                                      (BYTE *)&out->buffer, &size);
     return_if_error(r, "byte serialize");
 
@@ -3044,8 +3122,10 @@ ifapi_json_TPM2B_PUBLIC_KEY_RSA_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMI_RSA_KEY_BITS json object.
-*
-*/
+ *
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ */
 TSS2_RC
 ifapi_json_TPMI_RSA_KEY_BITS_deserialize(json_object *jso,
         TPMI_RSA_KEY_BITS *out)
@@ -3060,6 +3140,7 @@ ifapi_json_TPMI_RSA_KEY_BITS_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_ECC_PARAMETER_deserialize(json_object *jso,
@@ -3070,7 +3151,7 @@ ifapi_json_TPM2B_ECC_PARAMETER_deserialize(json_object *jso,
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, TPM2_MAX_ECC_KEY_BYTES,
+    r = ifapi_json_byte_deserialize(jso, TPM2_MAX_ECC_KEY_BYTES,
                                      (BYTE *)&out->buffer, &size);
     return_if_error(r, "byte serialize");
 
@@ -3086,6 +3167,7 @@ ifapi_json_TPM2B_ECC_PARAMETER_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ECC_POINT_deserialize(json_object *jso,  TPMS_ECC_POINT *out)
@@ -3097,28 +3179,28 @@ ifapi_json_TPMS_ECC_POINT_deserialize(json_object *jso,  TPMS_ECC_POINT *out)
 
     if (!ifapi_get_sub_object(jso, "x", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->x);
+    r = ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->x);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "y", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->y);
+    r = ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->y);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 }
 
 /** Deserialize a TPMI_ALG_ECC_SCHEME json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_ECC_SCHEME_deserialize(json_object *jso,
         TPMI_ALG_ECC_SCHEME *out)
@@ -3129,8 +3211,10 @@ ifapi_json_TPMI_ALG_ECC_SCHEME_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMI_ECC_CURVE json object.
-*
-*/
+ *
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ */
 TSS2_RC
 ifapi_json_TPMI_ECC_CURVE_deserialize(json_object *jso, TPMI_ECC_CURVE *out)
 {
@@ -3146,6 +3230,7 @@ ifapi_json_TPMI_ECC_CURVE_deserialize(json_object *jso, TPMI_ECC_CURVE *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_ECC_SCHEME_deserialize(json_object *jso,  TPMT_ECC_SCHEME *out)
@@ -3157,14 +3242,14 @@ ifapi_json_TPMT_ECC_SCHEME_deserialize(json_object *jso,  TPMT_ECC_SCHEME *out)
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_ECC_SCHEME_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMI_ALG_ECC_SCHEME_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
     if (out->scheme != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "details", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_ASYM_SCHEME_deserialize(out->scheme, jso2, &out->details);
         return_if_error(r, "BAD VALUE");
@@ -3180,6 +3265,7 @@ ifapi_json_TPMT_ECC_SCHEME_deserialize(json_object *jso,  TPMT_ECC_SCHEME *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_RSA_deserialize(json_object *jso,
@@ -3192,30 +3278,31 @@ ifapi_json_TPMS_SIGNATURE_RSA_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "hash", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hash);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hash);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "sig", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_PUBLIC_KEY_RSA_deserialize(jso2, &out->sig);
+    r = ifapi_json_TPM2B_PUBLIC_KEY_RSA_deserialize(jso2, &out->sig);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 }
 
-/*** Table 175 - Definition of Types for Table 175 - Definition of Types for  Signature ***/
+/*** Table 175 - Definition of Types for  Signature ***/
 
 /** Deserialize a TPMS_SIGNATURE_RSASSA json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_RSASSA_deserialize(json_object *jso,
         TPMS_SIGNATURE_RSASSA *out)
@@ -3225,12 +3312,13 @@ ifapi_json_TPMS_SIGNATURE_RSASSA_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIGNATURE_RSAPSS json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_RSAPSS_deserialize(json_object *jso,
         TPMS_SIGNATURE_RSAPSS *out)
@@ -3245,6 +3333,7 @@ ifapi_json_TPMS_SIGNATURE_RSAPSS_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECC_deserialize(json_object *jso,
@@ -3257,37 +3346,38 @@ ifapi_json_TPMS_SIGNATURE_ECC_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "hash", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hash);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->hash);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "signatureR", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->signatureR);
+    r = ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->signatureR);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "signatureS", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->signatureS);
+    r = ifapi_json_TPM2B_ECC_PARAMETER_deserialize(jso2, &out->signatureS);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 }
 
-/*** Table 177 - Definition of Types for Table 177 - Definition of Types for  TPMS_SIGNATURE_ECC ***/
+/*** Table 177 - Definition of Types for  TPMS_SIGNATURE_ECC ***/
 
 /** Deserialize a TPMS_SIGNATURE_ECDSA json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECDSA_deserialize(json_object *jso,
         TPMS_SIGNATURE_ECDSA *out)
@@ -3297,12 +3387,13 @@ ifapi_json_TPMS_SIGNATURE_ECDSA_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIGNATURE_ECDAA json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECDAA_deserialize(json_object *jso,
         TPMS_SIGNATURE_ECDAA *out)
@@ -3312,12 +3403,13 @@ ifapi_json_TPMS_SIGNATURE_ECDAA_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIGNATURE_SM2 json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_SM2_deserialize(json_object *jso,
         TPMS_SIGNATURE_SM2 *out)
@@ -3327,12 +3419,13 @@ ifapi_json_TPMS_SIGNATURE_SM2_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMS_SIGNATURE_ECSCHNORR json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
 TSS2_RC
 ifapi_json_TPMS_SIGNATURE_ECSCHNORR_deserialize(json_object *jso,
         TPMS_SIGNATURE_ECSCHNORR *out)
@@ -3344,10 +3437,12 @@ ifapi_json_TPMS_SIGNATURE_ECSCHNORR_deserialize(json_object *jso,
 /** Deserialize a TPMU_SIGNATURE json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the signature.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_SIGNATURE_deserialize(
@@ -3387,6 +3482,7 @@ ifapi_json_TPMU_SIGNATURE_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_SIGNATURE_deserialize(json_object *jso,  TPMT_SIGNATURE *out)
@@ -3398,14 +3494,14 @@ ifapi_json_TPMT_SIGNATURE_deserialize(json_object *jso,  TPMT_SIGNATURE *out)
 
     if (!ifapi_get_sub_object(jso, "sigAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_SIG_SCHEME_deserialize(jso2, &out->sigAlg);
+    r = ifapi_json_TPMI_ALG_SIG_SCHEME_deserialize(jso2, &out->sigAlg);
     return_if_error(r, "BAD VALUE");
     if (out->sigAlg != TPM2_ALG_NULL) {
         if (!ifapi_get_sub_object(jso, "signature", &jso2)) {
             LOG_ERROR("BAD VALUE");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         r = ifapi_json_TPMU_SIGNATURE_deserialize(out->sigAlg, jso2, &out->signature);
         return_if_error(r, "BAD VALUE");
@@ -3421,6 +3517,7 @@ ifapi_json_TPMT_SIGNATURE_deserialize(json_object *jso,  TPMT_SIGNATURE *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_ENCRYPTED_SECRET_deserialize(json_object *jso,
@@ -3431,7 +3528,7 @@ ifapi_json_TPM2B_ENCRYPTED_SECRET_deserialize(json_object *jso,
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, sizeof(TPMU_ENCRYPTED_SECRET),
+    r = ifapi_json_byte_deserialize(jso, sizeof(TPMU_ENCRYPTED_SECRET),
                                      (BYTE *)&out->secret, &size);
     return_if_error(r, "byte serialize");
 
@@ -3442,12 +3539,12 @@ ifapi_json_TPM2B_ENCRYPTED_SECRET_deserialize(json_object *jso,
 }
 
 /** Deserialize a TPMI_ALG_PUBLIC json object.
-*
-* @param[in]  jso the json object to be deserialized.
-* @param[out] out the deserialzed binary object.
-* @retval TSS2_RC_SUCCESS if the function call was a success.
-* @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
-*/
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ */
 TSS2_RC
 ifapi_json_TPMI_ALG_PUBLIC_deserialize(json_object *jso, TPMI_ALG_PUBLIC *out)
 {
@@ -3458,10 +3555,12 @@ ifapi_json_TPMI_ALG_PUBLIC_deserialize(json_object *jso, TPMI_ALG_PUBLIC *out)
 /** Deserialize a TPMU_PUBLIC_ID json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the public ID.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_PUBLIC_ID_deserialize(
@@ -3491,6 +3590,7 @@ ifapi_json_TPMU_PUBLIC_ID_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_KEYEDHASH_PARMS_deserialize(json_object *jso,
@@ -3503,9 +3603,9 @@ ifapi_json_TPMS_KEYEDHASH_PARMS_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_KEYEDHASH_SCHEME_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMT_KEYEDHASH_SCHEME_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -3517,6 +3617,7 @@ ifapi_json_TPMS_KEYEDHASH_PARMS_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_RSA_PARMS_deserialize(json_object *jso,  TPMS_RSA_PARMS *out)
@@ -3528,30 +3629,30 @@ ifapi_json_TPMS_RSA_PARMS_deserialize(json_object *jso,  TPMS_RSA_PARMS *out)
 
     if (!ifapi_get_sub_object(jso, "symmetric", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->symmetric);
+    r = ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->symmetric);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_RSA_SCHEME_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMT_RSA_SCHEME_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "keyBits", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_RSA_KEY_BITS_deserialize(jso2, &out->keyBits);
+    r = ifapi_json_TPMI_RSA_KEY_BITS_deserialize(jso2, &out->keyBits);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "exponent", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT32_deserialize(jso2, &out->exponent);
+    r = ifapi_json_UINT32_deserialize(jso2, &out->exponent);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -3563,6 +3664,7 @@ ifapi_json_TPMS_RSA_PARMS_deserialize(json_object *jso,  TPMS_RSA_PARMS *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_ECC_PARMS_deserialize(json_object *jso,  TPMS_ECC_PARMS *out)
@@ -3574,30 +3676,30 @@ ifapi_json_TPMS_ECC_PARMS_deserialize(json_object *jso,  TPMS_ECC_PARMS *out)
 
     if (!ifapi_get_sub_object(jso, "symmetric", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->symmetric);
+    r = ifapi_json_TPMT_SYM_DEF_OBJECT_deserialize(jso2, &out->symmetric);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "scheme", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_ECC_SCHEME_deserialize(jso2, &out->scheme);
+    r = ifapi_json_TPMT_ECC_SCHEME_deserialize(jso2, &out->scheme);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "curveID", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ECC_CURVE_deserialize(jso2, &out->curveID);
+    r = ifapi_json_TPMI_ECC_CURVE_deserialize(jso2, &out->curveID);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "kdf", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMT_KDF_SCHEME_deserialize(jso2, &out->kdf);
+    r = ifapi_json_TPMT_KDF_SCHEME_deserialize(jso2, &out->kdf);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -3606,10 +3708,12 @@ ifapi_json_TPMS_ECC_PARMS_deserialize(json_object *jso,  TPMS_ECC_PARMS *out)
 /** Deserialize a TPMU_PUBLIC_PARMS json object.
  *
  * This functions expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in]  selector The type the public params.
  * @param[in]  jso the json object to be deserialized.
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMU_PUBLIC_PARMS_deserialize(
@@ -3639,6 +3743,7 @@ ifapi_json_TPMU_PUBLIC_PARMS_deserialize(
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMT_PUBLIC_deserialize(json_object *jso,  TPMT_PUBLIC *out)
@@ -3650,41 +3755,41 @@ ifapi_json_TPMT_PUBLIC_deserialize(json_object *jso,  TPMT_PUBLIC *out)
 
     if (!ifapi_get_sub_object(jso, "type", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_PUBLIC_deserialize(jso2, &out->type);
+    r = ifapi_json_TPMI_ALG_PUBLIC_deserialize(jso2, &out->type);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "nameAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->nameAlg);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->nameAlg);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "objectAttributes", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMA_OBJECT_deserialize(jso2, &out->objectAttributes);
+    r = ifapi_json_TPMA_OBJECT_deserialize(jso2, &out->objectAttributes);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "authPolicy", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->authPolicy);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->authPolicy);
     return_if_error(r, "BAD VALUE");
     if (!ifapi_get_sub_object(jso, "parameters", &jso2)) {
         LOG_ERROR("BAD VALUE");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     r = ifapi_json_TPMU_PUBLIC_PARMS_deserialize(out->type, jso2, &out->parameters);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "unique", &jso2)) {
         LOG_ERROR("BAD VALUE");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     r = ifapi_json_TPMU_PUBLIC_ID_deserialize(out->type, jso2, &out->unique);
     return_if_error(r, "BAD VALUE");
@@ -3698,6 +3803,7 @@ ifapi_json_TPMT_PUBLIC_deserialize(json_object *jso,  TPMT_PUBLIC *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_PUBLIC_deserialize(json_object *jso, TPM2B_PUBLIC *out)
@@ -3707,13 +3813,13 @@ ifapi_json_TPM2B_PUBLIC_deserialize(json_object *jso, TPM2B_PUBLIC *out)
     LOG_TRACE("call");
     if (!ifapi_get_sub_object(jso, "size", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     res = ifapi_json_UINT16_deserialize(jso2, &out->size);
     return_if_error(res, "BAD VALUE");
     if (!ifapi_get_sub_object(jso, "publicArea", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     res = ifapi_json_TPMT_PUBLIC_deserialize(jso2, &out->publicArea);
     return_if_error(res, "BAD VALUE");
@@ -3726,6 +3832,7 @@ ifapi_json_TPM2B_PUBLIC_deserialize(json_object *jso, TPM2B_PUBLIC *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_PRIVATE_deserialize(json_object *jso,  TPM2B_PRIVATE *out)
@@ -3735,7 +3842,7 @@ ifapi_json_TPM2B_PRIVATE_deserialize(json_object *jso,  TPM2B_PRIVATE *out)
     return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
 
     UINT16 size = 0;
-    r =  ifapi_json_byte_deserialize(jso, sizeof(_PRIVATE), (BYTE *)&out->buffer,
+    r = ifapi_json_byte_deserialize(jso, sizeof(_PRIVATE), (BYTE *)&out->buffer,
                                      &size);
     return_if_error(r, "byte serialize");
 
@@ -3751,6 +3858,7 @@ ifapi_json_TPM2B_PRIVATE_deserialize(json_object *jso,  TPM2B_PRIVATE *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2_NT_deserialize(json_object *jso, TPM2_NT *out)
@@ -3786,6 +3894,7 @@ ifapi_json_TPM2_NT_deserialize(json_object *jso, TPM2_NT *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMA_NV_deserialize(json_object *jso, TPMA_NV *out)
@@ -3892,12 +4001,12 @@ ifapi_json_TPMA_NV_deserialize(json_object *jso, TPMA_NV *out)
         int64_t i64;
         if (!get_number(token, &i64)) {
             LOG_ERROR("Bad value");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         *out = (TPMA_NV) i64;
         if ((int64_t)*out != i64) {
             LOG_ERROR("Bad value");
-            return  TSS2_FAPI_RC_BAD_VALUE;
+            return TSS2_FAPI_RC_BAD_VALUE;
         }
         return TSS2_RC_SUCCESS;
     }
@@ -3911,6 +4020,7 @@ ifapi_json_TPMA_NV_deserialize(json_object *jso, TPMA_NV *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_NV_PUBLIC_deserialize(json_object *jso,  TPMS_NV_PUBLIC *out)
@@ -3922,37 +4032,37 @@ ifapi_json_TPMS_NV_PUBLIC_deserialize(json_object *jso,  TPMS_NV_PUBLIC *out)
 
     if (!ifapi_get_sub_object(jso, "nvIndex", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_RH_NV_INDEX_deserialize(jso2, &out->nvIndex);
+    r = ifapi_json_TPMI_RH_NV_INDEX_deserialize(jso2, &out->nvIndex);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "nameAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->nameAlg);
+    r = ifapi_json_TPMI_ALG_HASH_deserialize(jso2, &out->nameAlg);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "attributes", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMA_NV_deserialize(jso2, &out->attributes);
+    r = ifapi_json_TPMA_NV_deserialize(jso2, &out->attributes);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "authPolicy", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->authPolicy);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->authPolicy);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "dataSize", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_UINT16_deserialize(jso2, &out->dataSize);
+    r = ifapi_json_UINT16_deserialize(jso2, &out->dataSize);
     return_if_error(r, "BAD VALUE");
 
     LOG_TRACE("true");
@@ -3964,6 +4074,7 @@ ifapi_json_TPMS_NV_PUBLIC_deserialize(json_object *jso,  TPMS_NV_PUBLIC *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_NV_PUBLIC_deserialize(json_object *jso, TPM2B_NV_PUBLIC *out)
@@ -3973,13 +4084,13 @@ ifapi_json_TPM2B_NV_PUBLIC_deserialize(json_object *jso, TPM2B_NV_PUBLIC *out)
     LOG_TRACE("call");
     if (!ifapi_get_sub_object(jso, "size", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     res = ifapi_json_UINT16_deserialize(jso2, &out->size);
     return_if_error(res, "BAD VALUE");
     if (!ifapi_get_sub_object(jso, "nvPublic", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     res = ifapi_json_TPMS_NV_PUBLIC_deserialize(jso2, &out->nvPublic);
     return_if_error(res, "BAD VALUE");
@@ -3992,6 +4103,7 @@ ifapi_json_TPM2B_NV_PUBLIC_deserialize(json_object *jso, TPM2B_NV_PUBLIC *out)
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPMS_CREATION_DATA_deserialize(json_object *jso,
@@ -4004,51 +4116,51 @@ ifapi_json_TPMS_CREATION_DATA_deserialize(json_object *jso,
 
     if (!ifapi_get_sub_object(jso, "pcrSelect", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPML_PCR_SELECTION_deserialize(jso2, &out->pcrSelect);
+    r = ifapi_json_TPML_PCR_SELECTION_deserialize(jso2, &out->pcrSelect);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "pcrDigest", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->pcrDigest);
+    r = ifapi_json_TPM2B_DIGEST_deserialize(jso2, &out->pcrDigest);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "locality", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPMA_LOCALITY_deserialize(jso2, &out->locality);
+    r = ifapi_json_TPMA_LOCALITY_deserialize(jso2, &out->locality);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "parentNameAlg", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2_ALG_ID_deserialize(jso2, &out->parentNameAlg);
+    r = ifapi_json_TPM2_ALG_ID_deserialize(jso2, &out->parentNameAlg);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "parentName", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_NAME_deserialize(jso2, &out->parentName);
+    r = ifapi_json_TPM2B_NAME_deserialize(jso2, &out->parentName);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "parentQualifiedName", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_NAME_deserialize(jso2, &out->parentQualifiedName);
+    r = ifapi_json_TPM2B_NAME_deserialize(jso2, &out->parentQualifiedName);
     return_if_error(r, "BAD VALUE");
 
     if (!ifapi_get_sub_object(jso, "outsideInfo", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
-    r =  ifapi_json_TPM2B_DATA_deserialize(jso2, &out->outsideInfo);
+    r = ifapi_json_TPM2B_DATA_deserialize(jso2, &out->outsideInfo);
     return_if_error(r, "BAD VALUE");
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
@@ -4059,6 +4171,7 @@ ifapi_json_TPMS_CREATION_DATA_deserialize(json_object *jso,
  * @param[out] out the deserialzed binary object.
  * @retval TSS2_RC_SUCCESS if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
  */
 TSS2_RC
 ifapi_json_TPM2B_CREATION_DATA_deserialize(json_object *jso,
@@ -4069,13 +4182,13 @@ ifapi_json_TPM2B_CREATION_DATA_deserialize(json_object *jso,
     LOG_TRACE("call");
     if (!ifapi_get_sub_object(jso, "size", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     res = ifapi_json_UINT16_deserialize(jso2, &out->size);
     return_if_error(res, "BAD VALUE");
     if (!ifapi_get_sub_object(jso, "creationData", &jso2)) {
         LOG_ERROR("Bad value");
-        return  TSS2_FAPI_RC_BAD_VALUE;
+        return TSS2_FAPI_RC_BAD_VALUE;
     }
     res = ifapi_json_TPMS_CREATION_DATA_deserialize(jso2, &out->creationData);
     return_if_error(res, "BAD VALUE");

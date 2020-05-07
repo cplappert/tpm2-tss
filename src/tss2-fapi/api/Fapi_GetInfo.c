@@ -53,8 +53,8 @@ static IFAPI_INFO_CAP info_cap_tab[] = {
  * Returns a UTF-8 encoded string that identifies the versions of FAPI, TPM,
  * configurations and other relevant information.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] info The byte buffer for the information string
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] info The byte buffer for the information string
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or info is NULL.
@@ -64,6 +64,14 @@ static IFAPI_INFO_CAP info_cap_tab[] = {
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_GetInfo(
@@ -112,7 +120,7 @@ Fapi_GetInfo(
 
     return_if_error_reset_state(r, "GetTPMInfo");
 
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -123,7 +131,7 @@ Fapi_GetInfo(
  *
  * Call Fapi_GetInfo_Finish to finish the execution of this command.
  *
- * @param [in, out] context The FAPI_CONTEXT
+ * @param[in,out] context The FAPI_CONTEXT
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context is NULL.
@@ -133,6 +141,8 @@ Fapi_GetInfo(
  * @retval TSS2_FAPI_RC_IO_ERROR: if the data cannot be saved.
  * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory for
  *         internal operations or return parameters.
+ * @retval TSS2_FAPI_RC_NO_TPM if FAPI was initialized in no-TPM-mode via its
+ *         config file.
  */
 TSS2_RC
 Fapi_GetInfo_Async(
@@ -148,15 +158,19 @@ Fapi_GetInfo_Async(
     /* Helpful alias pointers */
     IFAPI_GetInfo * command = &context->cmd.GetInfo;
 
+    /* Reset all context-internal session state information. */
     r = ifapi_session_init(context);
     return_if_error(r, "Initialize GetInfo");
-    memset(command, 0, sizeof(IFAPI_INFO));
-    r = ifapi_capability_init(context);
 
+    memset(command, 0, sizeof(IFAPI_GetInfo));
+    r = ifapi_capability_init(context);
     return_if_error(r, "Capability init");
+
+    /* Initialize the context state for this operation. */
     command->idx_info_cap = 0;
     context->state = GET_INFO_GET_CAP;
-    LOG_TRACE("finsihed");
+
+    LOG_TRACE("finished");
     return TSS2_RC_SUCCESS;
 }
 
@@ -164,8 +178,8 @@ Fapi_GetInfo_Async(
  *
  * This function should be called after a previous Fapi_GetInfo_Async.
  *
- * @param [in, out] context The FAPI_CONTEXT
- * @param [out] info The byte buffer for the information string
+ * @param[in,out] context The FAPI_CONTEXT
+ * @param[out] info The byte buffer for the information string
  *
  * @retval TSS2_RC_SUCCESS: if the function call was a success.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE: if context or info is NULL.
@@ -177,6 +191,10 @@ Fapi_GetInfo_Async(
  *         internal operations or return parameters.
  * @retval TSS2_FAPI_RC_TRY_AGAIN: if the asynchronous operation is not yet
  *         complete. Call this function again later.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 Fapi_GetInfo_Finish(
@@ -199,16 +217,17 @@ Fapi_GetInfo_Finish(
     TPMS_CAPABILITY_DATA *capabilityData = NULL;
 
     switch (context->state) {
-    case  GET_INFO_GET_CAP:
-        /* Initialize the propert for the first ESAPI call */
+    case GET_INFO_GET_CAP:
+        /* Initialize the property for the first ESAPI call */
         command->property
             = info_cap_tab[command->idx_info_cap].property;
         fallthrough;
 
-    case  GET_INFO_GET_CAP_MORE:
+    case GET_INFO_GET_CAP_MORE:
+        /* This state is a helper used from fapi_util.c */
         fallthrough;
 
-    case  GET_INFO_WAIT_FOR_CAP:
+    case GET_INFO_WAIT_FOR_CAP:
         /* State will be set by sub routine */
         capIdx = command->idx_info_cap;
         r = ifapi_capability_get(context,
@@ -218,22 +237,25 @@ Fapi_GetInfo_Finish(
         return_try_again(r);
         goto_if_error(r, "Get capability", cleanup);
 
-        infoObj->cap[capIdx].description =  info_cap_tab[capIdx].description;
-        infoObj->cap[capIdx].capability =  capabilityData;
+        infoObj->cap[capIdx].description = info_cap_tab[capIdx].description;
+        infoObj->cap[capIdx].capability = capabilityData;
         command->property_count = 0;
         command->idx_info_cap += 1;
-        if  (command->idx_info_cap <  sizeof(info_cap_tab)
-             / sizeof(info_cap_tab[0])) {
-            /* Not all capablities have been collected */
+        if (command->idx_info_cap <  sizeof(info_cap_tab)
+                / sizeof(info_cap_tab[0])) {
+            /* Not all capabilities have been collected */
             context->state = GET_INFO_GET_CAP;
             return TSS2_FAPI_RC_TRY_AGAIN;
         }
 
         infoObj->fapi_version = "OSSTSS 2.2.x";
         infoObj->fapi_config = "Properties of config have to specified by TCG";
+
+        /* Serialize the information. */
         r = ifapi_json_IFAPI_INFO_serialize(infoObj, &jso);
         goto_if_error(r, "Error serialize info object", cleanup);
 
+        /* Duplicate the information to be returned to the caller. */
         *info = strdup(json_object_to_json_string_ext(jso, JSON_C_TO_STRING_PRETTY));
         goto_if_null2(*info, "Out of memory.", r, TSS2_FAPI_RC_MEMORY, cleanup);
 
@@ -245,10 +267,11 @@ Fapi_GetInfo_Finish(
     }
 
 cleanup:
+    /* Cleanup any intermediate results and state stored in the context. */
     json_object_put(jso);
     for (capIdx = 0; capIdx < IFAPI_MAX_CAP_INFO; capIdx++) {
         SAFE_FREE(infoObj->cap[capIdx].capability);
     }
-    LOG_TRACE("finsihed");
+    LOG_TRACE("finished");
     return r;
 }

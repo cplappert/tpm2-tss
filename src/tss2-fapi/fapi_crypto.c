@@ -26,10 +26,25 @@
 #define LOGMODULE fapi
 #include "util/log.h"
 
+#if OPENSSL_VERSION_NUMBER >= 0x10101000L
+#define EC_POINT_set_affine_coordinates_tss(group, tpm_pub_key, bn_x, bn_y, dmy) \
+        EC_POINT_set_affine_coordinates(group, tpm_pub_key, bn_x, bn_y, dmy)
+
+#define EC_POINT_get_affine_coordinates_tss(group, tpm_pub_key, bn_x, bn_y, dmy) \
+        EC_POINT_get_affine_coordinates(group, tpm_pub_key, bn_x, bn_y, dmy)
+
+#else
+#define EC_POINT_set_affine_coordinates_tss(group, tpm_pub_key, bn_x, bn_y, dmy) \
+        EC_POINT_set_affine_coordinates_GFp(group, tpm_pub_key, bn_x, bn_y, dmy)
+
+#define EC_POINT_get_affine_coordinates_tss(group, tpm_pub_key, bn_x, bn_y, dmy) \
+        EC_POINT_get_affine_coordinates_GFp(group, tpm_pub_key, bn_x, bn_y, dmy)
+#endif /* OPENSSL_VERSION_NUMBER >= 0x10101000L */
+
 /** Context to hold temporary values for ifapi_crypto */
 typedef struct _IFAPI_CRYPTO_CONTEXT {
     /** The hash engine's context */
-    EVP_MD_CTX  *osslContext;
+    EVP_MD_CTX *osslContext;
     /** The currently used hash algorithm */
     const EVP_MD *osslHashAlgorithm;
     /** The size of the hash's digest */
@@ -42,11 +57,11 @@ static ENGINE *engine = NULL;
 /**
  * Returns the signature scheme that is currently used in the FAPI context.
  *
- * @param [in] profile The FAPI profile from which the signing scheme is
- *             retrieved
- * @param [in] tpmPublic The public key for which the signing key is fetched
- *             from the FAPI
- * @param [out] signatureScheme The currently used signature scheme
+ * @param[in] profile The FAPI profile from which the signing scheme is
+ *            retrieved
+ * @param[in] tpmPublic The public key for which the signing key is fetched
+ *            from the FAPI
+ * @param[out] signatureScheme The currently used signature scheme
  *
  * @retval TSS2_RC_SUCCESS if the signature scheme was successfully fetched
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if one of the parameters is NULL
@@ -152,9 +167,9 @@ static const TPM2B_PUBLIC templateEccSign = {
 /**
  * Initializes a FAPI key template for a given signature algorithm.
  *
- * @param [in]  signatureAlgorithm The signature algorithm to use. Must be
- *              TPM2_ALG_RSA or TPM2_ALG_ECC
- * @param [out] template The template to initialize
+ * @param[in]  signatureAlgorithm The signature algorithm to use. Must be
+ *             TPM2_ALG_RSA or TPM2_ALG_ECC
+ * @param[out] public The template to initialize
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if template is NULL
@@ -186,9 +201,9 @@ ifapi_initialize_sign_public(TPM2_ALG_ID signatureAlgorithm,
 /**
  * Converts an openSSL BIGNUM into a binary byte buffer using.
  *
- * @param [in]  bn The BIGNUM to convert
- * @param [out] bin The binary buffer to which the bignum is converted
- * @param [in]  binSize The size of bin in bytes
+ * @param[in]  bn The BIGNUM to convert
+ * @param[out] bin The binary buffer to which the bignum is converted
+ * @param[in]  binSize The size of bin in bytes
  *
  * @retval 1 if the conversion was successful
  * @retval 0 if one of the parameters is NULL
@@ -214,7 +229,7 @@ ifapi_bn2binpad(const BIGNUM *bn, unsigned char *bin, int binSize)
  *
  * @retval A singleton hash engine
  */
-ENGINE *
+static ENGINE *
 get_engine()
 {
     /* If an engine is present, it is returned */
@@ -229,7 +244,7 @@ get_engine()
  * Returns a suitable openSSL hash algorithm identifier for a given TSS hash
  * algorithm identifier.
  *
- * @param [in] hashAlgorithm The TSS hash algorithm identifier
+ * @param[in] hashAlgorithm The TSS hash algorithm identifier
  *
  * @retval An openSSL hash algorithm identifier if one that is suitable to
  *         hashAlgorithm could be found
@@ -256,7 +271,7 @@ get_hash_md(TPM2_ALG_ID hashAlgorithm)
  * Returns a suitable openSSL RSA signature scheme identifiver for a given TSS
  * RSA signature scheme identifier.
  *
- * @param [in] signatureScheme The TSS RSA signature scheme identifier
+ * @param[in] signatureScheme The TSS RSA signature scheme identifier
  *
  * @retval RSA_PCKS1_PSS_PADDING if signatureScheme is TPM2_ALG_RSAPSS
  * @retval RSA_PKCS1_PADDING if signatureScheme is TPM2_ALG_RSASSA
@@ -279,10 +294,10 @@ get_sig_scheme(TPM2_ALG_ID signatureScheme)
  * Convert a TPM ECDSA signature into a DER formatted byte buffer. This can be
  * used by TLS libraries.
  *
- * @param [in]  tpmSignature The signature created by the TPM
- * @param [out] signature A byte buffer that will hold the DER representation of
- *              the signature  (callee allocated)
- * @param [out] signatureSize The size of signature in bytes. May be NULL
+ * @param[in]  tpmSignature The signature created by the TPM
+ * @param[out] signature A byte buffer that will hold the DER representation of
+ *             the signature  (callee allocated)
+ * @param[out] signatureSize The size of signature in bytes. May be NULL
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if tpmSignature is NULL
@@ -307,10 +322,8 @@ ifapi_tpm_ecc_sig_to_der(
     /* Initialize an OpenSSL ECDSA signature which servers as an intermediate
      * between the TSS ECDSA signature and the DER byte buffer */
     ecdsaSignature = ECDSA_SIG_new();
-    if (ecdsaSignature == NULL) {
-        goto_if_null(ecdsaSignature, "Out of memory", TSS2_FAPI_RC_MEMORY,
-                      cleanup);
-    }
+    goto_if_null(ecdsaSignature, "Out of memory", TSS2_FAPI_RC_MEMORY,
+                 cleanup);
 
     bns = BN_bin2bn(&tpmSignature->signature.ecdsa.signatureS.buffer[0],
                     tpmSignature->signature.ecdsa.signatureS.size, NULL);
@@ -362,13 +375,14 @@ cleanup:
  * Converts a public RSA key created by the TPM into one that can be used by
  * OpenSSL.
  *
- * @param [in]  tpmPublicKey The public RSA key created by the TPM
- * @param [out] evpPublicKey The converted public RSA key that can be used by
- *              OpenSSL
+ * @param[in]  tpmPublicKey The public RSA key created by the TPM
+ * @param[out] evpPublicKey The converted public RSA key that can be used by
+ *             OpenSSL
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if one of the parameters is NULL
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 static TSS2_RC
 ossl_rsa_pub_from_tpm(const TPM2B_PUBLIC *tpmPublicKey, EVP_PKEY *evpPublicKey)
@@ -449,13 +463,16 @@ error_cleanup:
  * Converts a public ECC key created by the TPM into one that can be used by
  * OpenSSL.
  *
- * @param [in]  tpmPublicKey The public ECC key created by the TPM
- * @param [out] evpPublicKey The converted public ECC key that can be used by
- *              OpenSSL
+ * @param[in]  tpmPublicKey The public ECC key created by the TPM
+ * @param[out] evpPublicKey The converted public ECC key that can be used by
+ *             OpenSSL
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if one of the parameters is NULL
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 static TSS2_RC
 ossl_ecc_pub_from_tpm(const TPM2B_PUBLIC *tpmPublicKey, EVP_PKEY *evpPublicKey)
@@ -489,7 +506,7 @@ ossl_ecc_pub_from_tpm(const TPM2B_PUBLIC *tpmPublicKey, EVP_PKEY *evpPublicKey)
         curveId = NID_secp521r1;
         break;
     default:
-        return_error(TSS2_FAPI_RC_NOT_IMPLEMENTED,
+        return_error(TSS2_FAPI_RC_BAD_VALUE,
                      "ECC curve not implemented.");
     }
 
@@ -524,6 +541,8 @@ ossl_ecc_pub_from_tpm(const TPM2B_PUBLIC *tpmPublicKey, EVP_PKEY *evpPublicKey)
         goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Assign ecc key",
                    error_cleanup);
     }
+    /* Needed for older OSSL versions. */
+    EC_KEY_set_asn1_flag(ecKey, OPENSSL_EC_NAMED_CURVE);
     OSSL_FREE(y, BN);
     OSSL_FREE(x, BN);
     return TSS2_RC_SUCCESS;
@@ -539,15 +558,18 @@ error_cleanup:
  * Convert a TPM public key into a PEM formatted byte buffer. This can be
  * used by TLS libraries.
  *
- * @param [in]  tpmPublicKey The public key created by the TPM
- * @param [out] pemKey A byte buffer that will hold the PEM representation of
- *              the public key  (callee allocated)
- * @param [out] pemKeySize The size of pemKey in bytes
+ * @param[in]  tpmPublicKey The public key created by the TPM
+ * @param[out] pemKey A byte buffer that will hold the PEM representation of
+ *             the public key  (callee allocated)
+ * @param[out] pemKeySize The size of pemKey in bytes
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
  * @retval TSS2_FAPI_RC_MEMORY if memory could not be allocated
  * @retval TSS2_FAPI_BAD_REFERENCE if tpmPublicKey or pemKeySize are NULL
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_pub_pem_key_from_tpm(
@@ -575,7 +597,7 @@ ifapi_pub_pem_key_from_tpm(
     } else if (tpmPublicKey->publicArea.type == TPM2_ALG_ECC)
         r = ossl_ecc_pub_from_tpm(tpmPublicKey, evpPublicKey);
     else {
-        goto_error(r,TSS2_FAPI_RC_BAD_VALUE, "Invalid alg id.", cleanup);
+        goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "Invalid alg id.", cleanup);
     }
     goto_if_error(r, "Get ossl public key.", cleanup);
 
@@ -607,11 +629,11 @@ cleanup:
 /** Converts an ECDSA signature from a DER encoded byte buffer into the
  * TPM format. It can then be verified by the TPM.
  *
- * @param [in]  signature A DER encoded byte buffer holding the signature
- * @param [in]  signatureSize The size of signature in bytes
- * @param [in]  keySize The size of the verification key
- * @param [in]  hashAlgorithm The TSS identifier of the hash algorithm to use
- * @param [out] tpmSignature The signature in the TPM format
+ * @param[in]  signature A DER encoded byte buffer holding the signature
+ * @param[in]  signatureSize The size of signature in bytes
+ * @param[in]  keySize The size of the verification key
+ * @param[in]  hashAlgorithm The TSS identifier of the hash algorithm to use
+ * @param[out] tpmSignature The signature in the TPM format
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
@@ -656,11 +678,13 @@ ifapi_ecc_der_sig_to_tpm(
     tpmSignature->sigAlg = TPM2_ALG_ECDSA; /**< only ECDSA is used by FAPI */
     ifapi_bn2binpad(bnr, &tpmSignature->signature.ecdsa.signatureR.buffer[0],
                        keySize);
+    tpmSignature->signature.ecdsa.signatureR.size = keySize;
     ifapi_bn2binpad(bns, &tpmSignature->signature.ecdsa.signatureS.buffer[0],
                        keySize);
+    tpmSignature->signature.ecdsa.signatureS.size = keySize;
     OSSL_FREE(ecdsaSignature, ECDSA_SIG);
-    OSSL_FREE(bnr, BN);
-    OSSL_FREE(bns, BN);
+    //OSSL_FREE(bnr, BN);
+    //OSSL_FREE(bns, BN);
     return TSS2_RC_SUCCESS;
 }
 
@@ -669,17 +693,19 @@ ifapi_ecc_der_sig_to_tpm(
  * The signature in DER format is converted to TPM format to
  * enable verification by the TPM.
  *
- * @param [in] tpmPublic The public information of the signature key
- * @param [in] signature A byte buffer holding the DER encoded signature
- * @param [in] signatureSize The size of signature in bytes
- * @param [in] hashAlgorithm The TSS identifier for the hash algorithm used
- *             to compute the digest
- * @param [out] tpmSignature The signature in TPM format
+ * @param[in] tpmPublic The public information of the signature key
+ * @param[in] signature A byte buffer holding the DER encoded signature
+ * @param[in] signatureSize The size of signature in bytes
+ * @param[in] hashAlgorithm The TSS identifier for the hash algorithm used
+ *            to compute the digest
+ * @param[out] tpmSignature The signature in TPM format
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if tpmPublic, signature or tpmSignature is NULL
  * @retval TSS2_FAPI_RC_MEMORY if memory could not be allocated
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_der_sig_to_tpm(
@@ -736,13 +762,13 @@ static const int rsaPadding[N_PADDING] = { RSA_PKCS1_PADDING, RSA_PKCS1_PSS_PADD
 /**
  * Verifies an RSA signature given as a binary byte buffer.
  *
- * @param [in] publicKey The public key with which the signature is to be
- *             verified
- * @param [in] signature A byte buffer holding the signature to verify
- * @param [in] signatureSize The size of signature in bytes
- * @param [in] digest The digest of the signature to verify
- * @param [in] digestSize The size of digest in bytes. Required to determine the
- *             hash algorithm
+ * @param[in] publicKey The public key with which the signature is to be
+ *            verified
+ * @param[in] signature A byte buffer holding the signature to verify
+ * @param[in] signatureSize The size of signature in bytes
+ * @param[in] digest The digest of the signature to verify
+ * @param[in] digestSize The size of digest in bytes. Required to determine the
+ *            hash algorithm
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if publicKey, signature or digest is NULL
@@ -806,7 +832,7 @@ rsa_verify_signature(
             goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
                        "Verify set signature md.", cleanup);
         }
-        if (1 !=  EVP_PKEY_verify(ctx, signature, signatureSize, digest, digestSize)) {
+        if (1 != EVP_PKEY_verify(ctx, signature, signatureSize, digest, digestSize)) {
             /* padding scheme was not appropriate, next should be tried */
             EVP_PKEY_CTX_free(ctx);
         } else {
@@ -826,13 +852,13 @@ cleanup:
 /**
  * Verifies an ECDSA signature given as a binary byte buffer.
  *
- * @param [in] publicKey The public key with which the signature is to be
- *             verified
- * @param [in] signature A byte buffer holding the signature to verify
- * @param [in] signatureSize The size of signature in bytes
- * @param [in] digest The digest of the signature to verify
- * @param [in] digestSize The size of digest in bytes. Required to determine the
- *             hash algorithm
+ * @param[in] publicKey The public key with which the signature is to be
+ *            verified
+ * @param[in] signature A byte buffer holding the signature to verify
+ * @param[in] signatureSize The size of signature in bytes
+ * @param[in] digest The digest of the signature to verify
+ * @param[in] digestSize The size of digest in bytes. Required to determine the
+ *            hash algorithm
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if publicKey, signature or digest is NULL
@@ -856,25 +882,22 @@ ecdsa_verify_signature(
     return_if_null(digest, "digest is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
 
     TSS2_RC r = TSS2_RC_SUCCESS;
-    ECDSA_SIG *ecdsaSignature = NULL;
     EC_KEY *eccKey = NULL;
-
-    /* Try to verify the signature using ECDSA */
-    if (!d2i_ECDSA_SIG(&ecdsaSignature, &signature, signatureSize)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
-                     "Invalid ECDSA DER signature", error_cleanup);
-    }
 
     eccKey = EVP_PKEY_get1_EC_KEY(publicKey);
 
-    if (!ECDSA_do_verify(digest, digestSize, ecdsaSignature, eccKey)) {
+    /* Try to verify the signature using ECDSA, note that param 0 is unused */
+    int rc = ECDSA_verify(0, digest, digestSize, signature, signatureSize, eccKey);
+    if (rc == 0) {
         goto_error(r, TSS2_FAPI_RC_SIGNATURE_VERIFICATION_FAILED,
+                   "ECDSA signature verification failed.", error_cleanup);
+    } else if (rc < 0) {
+        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
                    "ECDSA signature verification failed.", error_cleanup);
     }
 
 error_cleanup:
     OSSL_FREE(eccKey, EC_KEY);
-    OSSL_FREE(ecdsaSignature, ECDSA_SIG);
     return r;
 }
 
@@ -882,10 +905,10 @@ error_cleanup:
  * Gets an object with the TPM-relevant public information of an OpenSSL
  * RSA public key.
  *
- * @param [in, out] profile The crypto profile from which parameters are retrieved
- * @param [in]  publicKey The public key for which the public information is
- *              retrieved
- * @param [out] tpmPublic The public information of publicKey
+ * @param[in,out] profile The crypto profile from which parameters are retrieved
+ * @param[in]  publicKey The public key for which the public information is
+ *             retrieved
+ * @param[out] tpmPublic The public information of publicKey
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if profile, publicKey or tpmPublic is NULL
@@ -932,15 +955,17 @@ cleanup:
  * Gets an object with the TPM-relevant public information of an OpenSSL
  * ECC public key.
  *
- * @param [in, out] profile The crypto profile to retrieve parameters from.
- * @param [in]  publicKey The public key for which the public information is
- *              retrieved
- * @param [out] tpmPublic The public information of publicKey
+ * @param[in,out] profile The crypto profile to retrieve parameters from.
+ * @param[in]  publicKey The public key for which the public information is
+ *             retrieved
+ * @param[out] tpmPublic The public information of publicKey
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if profile, publicKey or tpmPublic is NULL
  * @retval TSS2_FAPI_RC_MEMORY if memory could not be allocated
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 static TSS2_RC
 get_ecc_tpm2b_public_from_evp(
@@ -983,7 +1008,7 @@ get_ecc_tpm2b_public_from_evp(
         goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Create bignum", cleanup);
     }
 
-    if (1 != EC_POINT_get_affine_coordinates_GFp(ecGroup, publicPoint,
+    if (1 != EC_POINT_get_affine_coordinates_tss(ecGroup, publicPoint,
                                                  bnX, bnY, NULL)) {
         goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
                    "Get affine coordinates", cleanup);
@@ -1015,7 +1040,7 @@ get_ecc_tpm2b_public_from_evp(
         tpmCurveId = TPM2_ECC_NIST_P521;
         break;
     default:
-        goto_error(r, TSS2_FAPI_RC_NOT_IMPLEMENTED,
+        goto_error(r, TSS2_FAPI_RC_BAD_VALUE,
                    "Curve %x not implemented", cleanup, curveId);
     }
     tpmPublic->publicArea.parameters.eccDetail.curveID = tpmCurveId;
@@ -1030,8 +1055,8 @@ cleanup:
 /**
  * Converts a given PEM key into an EVP public key object.
  *
- * @param [in] pemKey A byte buffer holding the PEM key to convert
- * @param [out] publicKey An EVP public key
+ * @param[in] pemKey A byte buffer holding the PEM key to convert
+ * @param[out] publicKey An EVP public key
  *
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if any of the parameters is NULL
  * @retval TSS2_FAPI_RC_MEMORY if memory could not be allocated
@@ -1064,11 +1089,15 @@ cleanup:
  * Returns the TPM algorithm identifier that matches to the signature algorithm
  * of a given PEM key.
  *
- * @param [in] pemKey The public key from which the signature algorithm is retrieved
+ * @param[in] pemKey The public key from which the signature algorithm is retrieved
  *
  * @retval TPM2_ALG_RSA if pemKey holds an RSA key
  * @retval TPM2_ALG_ECC if pemKey holds an ECC key
  * @retval TPM2_ALG_ERROR if the signature algorithm could not be determined
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TPM2_ALG_ID
 ifapi_get_signature_algorithm_from_pem(const char *pemKey) {
@@ -1104,15 +1133,16 @@ cleanup:
  * public key. The information is gathered from the key itself and the currently
  * used FAPI profile.
  *
- * @param [in, out] profile The crypto profile to retrieve parameters from
- * @param [in]  pemKey A byte buffer holding the PEM encoded public key for
- *              which the public information is retrieved
- * @param [out] tpmPublic The public information of pemKey
+ * @param[in]  pemKey A byte buffer holding the PEM encoded public key for
+ *             which the public information is retrieved
+ * @param[out] tpmPublic The public information of pemKey
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if profile, pemKey or tpmPublic is NULL
  * @retval TSS2_FAPI_RC_MEMORY if memory could not be allocated
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_get_tpm2b_public_from_pem(
@@ -1138,7 +1168,7 @@ ifapi_get_tpm2b_public_from_pem(
         r = get_ecc_tpm2b_public_from_evp(publicKey, tpmPublic);
         goto_if_error(r, "Get public for ECC key.", cleanup);
     } else {
-        goto_error(r, TSS2_FAPI_RC_NOT_IMPLEMENTED, "Wrong key_type", cleanup);
+        goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "Wrong key_type", cleanup);
     }
 cleanup:
     OSSL_FREE(publicKey, EVP_PKEY);
@@ -1148,12 +1178,12 @@ cleanup:
 /**
  * Verifies the signature created by a Quote command.
  *
- * @param [in] keyObject A FAPI key with which the signature is verified
- * @param [in] signature A byte buffer holding the signature
- * @param [in] signatureSize The size of signature in bytes
- * @param [in] digest The digest of the signature
- * @param [in] digestSize The size of digest in bytes
- * @param [in] signatureScheme The signature scheme
+ * @param[in] keyObject A FAPI key with which the signature is verified
+ * @param[in] signature A byte buffer holding the signature
+ * @param[in] signatureSize The size of signature in bytes
+ * @param[in] digest The digest of the signature
+ * @param[in] digestSize The size of digest in bytes
+ * @param[in] signatureScheme The signature scheme
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if keyObject, signature, digest
@@ -1251,7 +1281,7 @@ ifapi_verify_signature_quote(
                    "EVP_DigestSignFinal", error_cleanup);
     }
 
- error_cleanup:
+error_cleanup:
     if (mdctx != NULL) {
         EVP_MD_CTX_destroy(mdctx);
     }
@@ -1264,11 +1294,11 @@ ifapi_verify_signature_quote(
 /**
  * Verifies a signature using a given FAPI public key.
  *
- * @param [in] keyObject The FAPI public key used for verification
- * @param [in] signature The signature to verify
- * @param [in] signatureSize The size of signature in bytes
- * @param [in] digest The digest of the signature
- * @param [in] digestSize The size of digest in bytes
+ * @param[in] keyObject The FAPI public key used for verification
+ * @param[in] signature The signature to verify
+ * @param[in] signatureSize The size of signature in bytes
+ * @param[in] digest The digest of the signature
+ * @param[in] digestSize The size of digest in bytes
  *
  * @retval TSS2_RC_SUCCESS In case of success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if keyObject, signature or digest is NULL
@@ -1347,7 +1377,7 @@ error_cleanup:
 /**
  * Returns the digest size of a given hash algorithm.
  *
- * @param [in] hashAlgorithm The TSS identifier of the hash algorithm
+ * @param[in] hashAlgorithm The TSS identifier of the hash algorithm
  *
  * @return The size of the digest produced by the hash algorithm if
  * hashAlgorithm is valid
@@ -1381,7 +1411,7 @@ ifapi_hash_get_digest_size(TPM2_ALG_ID hashAlgorithm)
  * Converts a TSS hash algorithm identifier into an OpenSSL hash algorithm
  * identifier object.
  *
- * @param [in] hashAlgorithm The TSS hash algorithm identifier to convert
+ * @param[in] hashAlgorithm The TSS hash algorithm identifier to convert
  *
  * @retval A suitable OpenSSL identifier object if one could be found
  * @retval NULL if no suitable identifier object could be found
@@ -1415,7 +1445,7 @@ get_ossl_hash_md(TPM2_ALG_ID hashAlgorithm)
  *
  * @retval TSS2_RC_SUCCESS on success.
  * @retval TSS2_FAPI_RC_BAD_VALUE if hashAlgorithm is invalid
- * @retval TSS2_ESYS_RC_BAD_REFERENCE if context is NULL
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE if context is NULL
  * @retval TSS2_FAPI_RC_MEMORY if memory cannot be allocated
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
  */
@@ -1538,7 +1568,7 @@ ifapi_crypto_hash_finish(IFAPI_CRYPTO_CONTEXT_BLOB **context,
 
     LOGBLOB_DEBUG(digest, mycontext->hashSize, "finish hash");
 
-    if(digestSize != NULL) {
+    if (digestSize != NULL) {
         *digestSize = mycontext->hashSize;
     }
 
@@ -1571,100 +1601,13 @@ ifapi_crypto_hash_abort(IFAPI_CRYPTO_CONTEXT_BLOB **context)
     *context = NULL;
 }
 
-struct CertificateStruct {
-  unsigned char *buffer;
-  size_t size;
-};
-
-static size_t
-write_certificate_cb(void *contents, size_t size, size_t nmemb, void *userp)
-{
-  size_t realsize = size * nmemb;
-  struct CertificateStruct *cert = (struct CertificateStruct *)userp;
-
-  unsigned char *tmp_ptr = realloc(cert->buffer, cert->size + realsize + 1);
-  if(tmp_ptr == NULL) {
-      LOG_ERROR("Can't allocate memory in CURL callback.");
-    return 0;
-  }
-  cert->buffer = tmp_ptr;
-  memcpy(&(cert->buffer[cert->size]), contents, realsize);
-  cert->size += realsize;
-  cert->buffer[cert->size] = 0;
-
-  return realsize;
-}
-
-/** Get DER encoded certificate via curl. */
-static TSS2_RC
-get_cert_buffer(unsigned char * url, unsigned char ** buffer, size_t *cert_size)
-{
-    TSS2_RC r = TSS2_RC_SUCCESS;
-    CURL *curl_handle = NULL;
-
-    struct CertificateStruct cert_buffer = { .size = 0, .buffer = NULL };
-
-    /* Init dummy buffer, will be enlarged depending on the size of
-       the received data. */
-    cert_buffer.buffer = malloc(1);
-    goto_if_null2(cert_buffer.buffer, "Out of memory.", r,
-                  TSS2_FAPI_RC_GENERAL_FAILURE, cleanup);
-
-    /* Prepare curl with URL and callback for copying data */
-    if (CURLE_OK != curl_global_init(CURL_GLOBAL_ALL)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Curl global init",
-                   cleanup);
-    }
-
-    curl_handle = curl_easy_init();
-    if (!curl_handle) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Curl easy init",
-                   cleanup);
-
-    }
-    if (CURLE_OK != curl_easy_setopt(curl_handle, CURLOPT_URL, url)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Curl easy setopt",
-                   cleanup);
-    }
-    if (CURLE_OK != curl_easy_setopt(curl_handle, CURLOPT_WRITEFUNCTION,
-                                     write_certificate_cb)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Curl easy setopt",
-                   cleanup);
-    }
-    if (CURLE_OK != curl_easy_setopt(curl_handle, CURLOPT_WRITEDATA,
-                                     (void *)&cert_buffer)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Curl easy setopt",
-                   cleanup);
-    }
-    if (CURLE_OK != curl_easy_setopt(curl_handle, CURLOPT_USERAGENT,
-                                     "libcurl-agent/1.0")) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Curl easy setopt",
-                   cleanup);
-    }
-    /* Receive the certificate */
-    if (CURLE_OK != curl_easy_perform(curl_handle)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Curl easy setopt",
-                   cleanup);
-    }
-    LOG_TRACE("%zu bytes of certificate retrieved\n", cert_buffer.size);
-
-    *buffer = cert_buffer.buffer;
-    *cert_size = cert_buffer.size;
-    if (curl_handle)
-        curl_easy_cleanup(curl_handle);
-     curl_global_cleanup();
-     return r;
-
- cleanup:
-     if (curl_handle)
-        curl_easy_cleanup(curl_handle);
-     curl_global_cleanup();
-     free(cert_buffer.buffer);
-     return r;
-}
-
 /**
  * Get url to download crl from certificate.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_NO_CERT if an error did occur during certificate downloading.
  */
 TSS2_RC
 get_crl_from_cert(X509 *cert, X509_CRL **crl)
@@ -1675,6 +1618,7 @@ get_crl_from_cert(X509 *cert, X509_CRL **crl)
     size_t crl_buffer_size;
     int nid = NID_crl_distribution_points;
     STACK_OF(DIST_POINT) * dist_points = (STACK_OF(DIST_POINT) *)X509_get_ext_d2i(cert, nid, NULL, NULL);
+    int curl_rc;
 
     *crl = NULL;
     for (int i = 0; i < sk_DIST_POINT_num(dist_points); i++)
@@ -1689,12 +1633,15 @@ get_crl_from_cert(X509 *cert, X509_CRL **crl)
                 ASN1_IA5STRING *asn1_str = gen_name->d.uniformResourceIdentifier;
                 SAFE_FREE(url);
                 url = (unsigned char *)strdup((char *)asn1_str->data);
+                goto_if_null2(url, "Out of memory", r, TSS2_FAPI_RC_MEMORY, cleanup);
             }
         }
     }
 
-    r = get_cert_buffer(url, &crl_buffer, &crl_buffer_size);
-    goto_if_error(r, "Get crl.", cleanup);
+    curl_rc = ifapi_get_curl_buffer(url, &crl_buffer, &crl_buffer_size);
+    if (curl_rc != 0) {
+        goto_error(r, TSS2_FAPI_RC_NO_CERT, "Get crl.", cleanup);
+    }
 
     OpenSSL_add_all_algorithms();
 
@@ -1705,7 +1652,7 @@ get_crl_from_cert(X509 *cert, X509_CRL **crl)
         goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "Can't convert crl.", cleanup);
     }
 
- cleanup:
+cleanup:
     SAFE_FREE(crl_buffer);
     CRL_DIST_POINTS_free(dist_points);
     SAFE_FREE(url);
@@ -1720,12 +1667,15 @@ get_crl_from_cert(X509 *cert, X509_CRL **crl)
  * @param[out] pemCert A byte buffer where the PEM-formatted certificate is
  *             stored
  * @param[out] certAlgorithmId The key type of the certified key
+ * @param[out] tpmPublic The public key of the certificate in TPM format.
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if certBuffer or pemCert is NULL
  * @retval TSS2_FAPI_RC_MEMORY if memory could not be allocated
  * @retval TSS2_FAPI_RC_BAD_VALUE, if the certificate is invalid
  * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
  */
 TSS2_RC
 ifapi_cert_to_pem(
@@ -1760,7 +1710,7 @@ ifapi_cert_to_pem(
     }
     /* Determine the size of the data written */
     pemCertSize = BIO_get_mem_data(bio, pemCert);
-    *pemCert = malloc(pemCertSize+1);
+    *pemCert = malloc(pemCertSize + 1);
     goto_if_null(pemCert, "Out of memory.", TSS2_FAPI_RC_MEMORY, cleanup);
 
     /* Get the byte buffer written to the BIO object */
@@ -1786,7 +1736,7 @@ ifapi_cert_to_pem(
         r = get_ecc_tpm2b_public_from_evp(publicKey, tpmPublic);
         goto_if_error(r, "Get public for ECC key.", cleanup);
     } else {
-        goto_error(r, TSS2_FAPI_RC_NOT_IMPLEMENTED, "Wrong key_type", cleanup);
+        goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "Wrong key_type", cleanup);
     }
 
     if (certAlgorithmId != NULL) {
@@ -1810,171 +1760,10 @@ cleanup:
 }
 
 /**
- * Encrypts data using AES in GCM mode.
- *
- * @param[in] key The key used for AES
- * @param[in] keySize The size of key in bytes
- * @param[in] iv The initialization vector. The size is equal to the block
- *            length of AES (16 bytes)
- * @param[in,out] buffer Data to be encrypted. The encrypted data will be stored
- *                in this buffer
- * @param[in] bufferSize The size of buffer in bytes
- *
- * @retval TSS2_RC_SUCCESS on success, or TSS2_FAPI_RC_BAD_VALUE and
- * @retval TSS2_FAPI_RC_BAD_REFERENCE if key, iv or buffer is NULL
- * @retval TSS2_FAPI_RC_BAD_VALUE if keySize is invalid
- * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
- */
-TSS2_RC
-ifapi_crypto_aes_encrypt(
-    const uint8_t *key,
-    size_t keySize,
-    const uint8_t *iv,
-    uint8_t *buffer,
-    size_t bufferSize)
-{
-    /* Check for NULL parameters */
-    return_if_null(key, "key is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
-    return_if_null(iv, "iv is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
-    return_if_null(buffer, "buffer is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
-
-    /* Initialize variables */
-    TSS2_RC r = TSS2_RC_SUCCESS;
-    EVP_CIPHER_CTX *ctx = NULL;
-    const EVP_CIPHER *cipherAlgorithm = NULL;
-    int cipherSize = 0;
-
-    LOGBLOB_TRACE(key, keySize, "AES key");
-    LOGBLOB_TRACE(iv, keySize, "AES iv");
-    LOGBLOB_TRACE(buffer, bufferSize, "IFAPI AES input");
-
-    /* Determine the key size */
-    if (keySize == 32) {
-        cipherAlgorithm = EVP_aes_256_cfb();
-    } else if (keySize == 24) {
-        cipherAlgorithm = EVP_aes_192_cfb();
-    } else if (keySize == 16) {
-        cipherAlgorithm = EVP_aes_128_cfb();
-    } else {
-        return_error2(TSS2_FAPI_RC_BAD_VALUE, "Invalid key size %zu", keySize);
-    }
-
-    /* Create and initialize the context */
-    if (!(ctx = EVP_CIPHER_CTX_new())) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
-                   "Initialize cipher context", cleanup);
-    }
-
-    if (1 != EVP_EncryptInit_ex(ctx, cipherAlgorithm, NULL, NULL, NULL)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
-                   "Initialize cipher operation", cleanup);
-    }
-    if (1 != EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Set key and iv", cleanup);
-    }
-
-    /* Perform the encryption */
-    if (1 != EVP_EncryptUpdate(ctx, buffer, &cipherSize, buffer, bufferSize)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Encrypt update", cleanup);
-    }
-
-    if (1 != EVP_EncryptFinal_ex(ctx, buffer, &cipherSize)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Encrypt final", cleanup);
-    }
-    LOGBLOB_TRACE(buffer, bufferSize, "IFAPI AES output %i", cipherSize);
-
-cleanup:
-    OSSL_FREE(ctx, EVP_CIPHER_CTX);
-    return r;
-}
-
-/**
- * Decrypts data using AES in GCM mode.
- *
- * @param[in] key The key used for AES
- * @param[in] keySize The size of key in bytes
- * @param[in] iv The initialization vector. The size is equal to the block
- *            length of AES (16 bytes)
- * @param[in,out] buffer Data to be encrypted. The encrypted data will be stored
- *                in this buffer
- * @param[in] bufferSize The size of buffer in bytes
- *
- * @retval TSS2_RC_SUCCESS on success, or TSS2_FAPI_RC_BAD_VALUE and
- * @retval TSS2_FAPI_RC_BAD_REFERENCE if key, iv or buffer is NULL
- * @retval TSS2_FAPI_RC_BAD_VALUE if keySize is invalid
- * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
- */
-TSS2_RC
-ifapi_crypto_aes_decrypt(
-    const uint8_t *key,
-    size_t keySize,
-    const uint8_t *iv,
-    uint8_t *buffer,
-    size_t bufferSize
-    )
-{
-    /* Check for NULL parameters */
-    return_if_null(key, "key is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
-    return_if_null(iv, "iv is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
-    return_if_null(buffer, "buffer is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
-
-    /* Initialize Variables */
-    TSS2_RC r = TSS2_RC_SUCCESS;
-    const EVP_CIPHER *cipherAlgorithm = NULL;
-    EVP_CIPHER_CTX *ctx = NULL;
-    int cipherSize = 0;
-
-    /* Determine the key size */
-    if (keySize == 32) {
-        cipherAlgorithm = EVP_aes_256_cfb();
-    } else if (keySize == 24) {
-        cipherAlgorithm = EVP_aes_192_cfb();
-    } else if (keySize == 16) {
-        cipherAlgorithm = EVP_aes_128_cfb();
-    } else {
-        return_error2(TSS2_FAPI_RC_BAD_VALUE, "Invalid key size %zu", keySize);
-    }
-
-    /* Create and initialize the context */
-    if (!(ctx = EVP_CIPHER_CTX_new())) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
-                   "Initialize cipher context", cleanup);
-    }
-
-    LOGBLOB_TRACE(key, keySize, "AES key");
-    LOGBLOB_TRACE(iv, keySize, "AES iv");
-    LOGBLOB_TRACE(buffer, bufferSize, "IFAPI AES input");
-
-    /* Initialise the decryption operation. */
-    if (1 != EVP_DecryptInit_ex(ctx, cipherAlgorithm, NULL, NULL, NULL)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
-                   "Initialize cipher operation", cleanup);
-    }
-
-    if (1 != EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Set key and iv", cleanup);
-    }
-
-    /* Perform the decryption */
-    if (1 != EVP_DecryptUpdate(ctx, buffer, &cipherSize, buffer, bufferSize)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Encrypt update", cleanup);
-    }
-
-    if (1 != EVP_DecryptFinal_ex(ctx, buffer, &cipherSize)) {
-        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Encrypt final", cleanup);
-    }
-    LOGBLOB_TRACE(buffer, bufferSize, "IFAPI AES output");
-
-cleanup:
-    OSSL_FREE(ctx, EVP_CIPHER_CTX);
-    return r;
-}
-
-/**
  * Returns a suitable hash algorithm for a given digest size.
  *
- * @param [in]  size The size of the digest
- * @param [out] hashAlgorithm A suitable hash algorithm for the digest size
+ * @param[in]  size The size of the digest
+ * @param[out] hashAlgorithm A suitable hash algorithm for the digest size
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_REFERENCE if hashAlgorithm is NULL
@@ -2005,7 +1794,14 @@ ifapi_get_hash_alg_for_size(uint16_t size, TPMI_ALG_HASH *hashAlgorithm)
     }
 }
 
-static X509 *get_X509_from_pem(char *pem_cert)
+/** Convert PEM certificate to OSSL format.
+ *
+ * @param[in] pem_cert Certificate in PEM format.
+ * @retval X509 OSSL certificate object.
+ * @retval NULL If the conversion fails.
+ */
+static X509
+*get_X509_from_pem(const char *pem_cert)
 {
     if (!pem_cert) {
         return NULL;
@@ -2024,9 +1820,58 @@ static X509 *get_X509_from_pem(char *pem_cert)
     return cert;
 }
 
-/** Convert buffer from web to X509 certificate.
-  */
-X509 * get_cert_from_buffer(unsigned char *cert_buffer, size_t cert_buffer_size)
+/** Get public information for key of a pem certificate.
+ *
+ * @param[in]  pem_cert The pem certificate.
+ * @param[out] tpm_public The public information of the key in TPM format.
+ *
+ * @retval TSS2_RC_SUCCESS on success
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the conversion fails.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if openssl errors occur.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
+TSS2_RC
+ifapi_get_public_from_pem_cert(const char* pem_cert, TPM2B_PUBLIC *tpm_public)
+{
+    TSS2_RC r = TSS2_RC_SUCCESS;
+    X509 *cert = NULL;
+    EVP_PKEY *public_key = NULL;
+
+    cert = get_X509_from_pem(pem_cert);
+    return_if_null(cert, "Invalid certificate.", TSS2_FAPI_RC_BAD_VALUE);
+
+    public_key = X509_get_pubkey(cert);
+    goto_if_null(public_key, "No public key in certificate.",
+                 TSS2_FAPI_RC_GENERAL_FAILURE, cleanup);
+
+    if (EVP_PKEY_type(EVP_PKEY_id(public_key)) == EVP_PKEY_RSA) {
+        tpm_public->publicArea.type = TPM2_ALG_RSA;
+        r = get_rsa_tpm2b_public_from_evp(public_key, tpm_public);
+        goto_if_error(r, "Get public for RSA key.", cleanup);
+
+    } else if (EVP_PKEY_type(EVP_PKEY_id(public_key)) == EVP_PKEY_EC) {
+        tpm_public->publicArea.type = TPM2_ALG_ECC;
+        r = get_ecc_tpm2b_public_from_evp(public_key, tpm_public);
+        goto_if_error(r, "Get public for ECC key.", cleanup);
+    } else {
+        goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "Wrong key_type", cleanup);
+    }
+cleanup:
+    OSSL_FREE(cert, X509);
+    OSSL_FREE(public_key, EVP_PKEY);
+    return r;
+}
+
+/** Convert buffer from DER format to X509 certificate.
+ *
+ * @param[in] cert_buffer Certificate in DER format.
+ * @aparm[in] cert_buffer_size Size of DER certificate.
+ * @retval X509 OSSL certificate object.
+ * @retval NULL If the conversion fails.
+ */
+static X509
+*get_cert_from_buffer(unsigned char *cert_buffer, size_t cert_buffer_size)
 {
     unsigned char *buffer = cert_buffer;
     X509 *cert = NULL;
@@ -2042,12 +1887,15 @@ X509 * get_cert_from_buffer(unsigned char *cert_buffer, size_t cert_buffer_size)
 /**
  * Verify EK certificate read from TPM.
  *
- * @param [in] root_cert_pem The vendor root certificate.
- * @param [in] intermed_cert_pem The vendor intermediate certificate.
- * @parma [in] ek_cert_pem The ek certificate from TPM.
+ * @param[in] root_cert_pem The vendor root certificate.
+ * @param[in] intermed_cert_pem The vendor intermediate certificate.
+ * @param[in] ek_cert_pem The ek certificate from TPM.
  *
  * @retval TSS2_RC_SUCCESS on success
  * @retval TSS2_FAPI_RC_BAD_VALUE if the verification was no successful.
+ * @retval TSS2_FAPI_RC_NO_CERT if an error did occur during certificate downloading.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_verify_ek_cert(
@@ -2070,6 +1918,7 @@ ifapi_verify_ek_cert(
     unsigned char * url;
     unsigned char *cert_buffer = NULL;
     size_t cert_buffer_size;
+    int curl_rc;
 
     ek_cert = get_X509_from_pem(ek_cert_pem);
     goto_if_null2(ek_cert, "Failed to convert PEM certificate to DER.",
@@ -2091,8 +1940,10 @@ ifapi_verify_ek_cert(
             }
             uri = ad->location->d.uniformResourceIdentifier;
             url = uri->data;
-            r = get_cert_buffer(url, &cert_buffer, &cert_buffer_size);
-            goto_if_error(r, "Failed to receive certificate", cleanup);
+            curl_rc = ifapi_get_curl_buffer(url, &cert_buffer, &cert_buffer_size);
+            if (curl_rc != 0) {
+                goto_error(r, TSS2_FAPI_RC_NO_CERT, "Get certificate.", cleanup);
+            }
             goto_if_null2(cert_buffer, "No certificate downloaded", r,
                           TSS2_FAPI_RC_NO_CERT, cleanup);
         }
@@ -2102,6 +1953,7 @@ ifapi_verify_ek_cert(
         OpenSSL_add_all_algorithms();
         intermed_cert = get_cert_from_buffer(cert_buffer, cert_buffer_size);
 
+        SAFE_FREE(cert_buffer);
         goto_if_null2(intermed_cert, "Failed to create intermediate certificate.",
                       r, TSS2_FAPI_RC_GENERAL_FAILURE, cleanup);
 
@@ -2163,6 +2015,7 @@ ifapi_verify_ek_cert(
             goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
                        "Failed to add root certificate", cleanup);
         }
+        OSSL_FREE(root_cert, X509);
     }
 
     /* Verify intermediate certificate */
@@ -2174,6 +2027,8 @@ ifapi_verify_ek_cert(
                    "Failed to initialize X509 context.", cleanup);
     }
     if (1 != X509_verify_cert(ctx)) {
+        int rc = X509_STORE_CTX_get_error(ctx);
+        LOG_ERROR("%s", X509_verify_cert_error_string(rc));
         goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE,
                    "Failed to verify EK certificate", cleanup);
     }
@@ -2201,18 +2056,94 @@ ifapi_verify_ek_cert(
                    "Failed to verify EK certificate", cleanup);
     }
 
- cleanup:
+cleanup:
     if (ctx) {
         X509_STORE_CTX_cleanup(ctx);
         X509_STORE_CTX_free(ctx);
     }
     if (store)
         X509_STORE_free(store);
-    OSSL_FREE(uri, ASN1_IA5STRING)
     OSSL_FREE(root_cert, X509);
     OSSL_FREE(intermed_cert, X509);
     OSSL_FREE(ek_cert, X509);
     OSSL_FREE(crl_intermed, X509_CRL);
     OSSL_FREE(crl_ek, X509_CRL);
+    OSSL_FREE(info, AUTHORITY_INFO_ACCESS);
+    return r;
+}
+
+/** Compute the fingerprint of a TPM public key.
+ *
+ * @param[in] tpmPublicKey The public key created by the TPM
+ * @param[in] hashAlg The hash algorithm used for fingerprint computation.
+ * @param[out] fingerprint The fingerprint digest.
+ *
+ * @retval TSS2_RC_SUCCESS on success
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an error occurs in the crypto library
+ * @retval TSS2_FAPI_RC_MEMORY if memory could not be allocated
+ * @retval TSS2_FAPI_BAD_REFERENCE if tpmPublicKey or pemKeySize are NULL
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ */
+TSS2_RC
+ifapi_get_tpm_key_fingerprint(
+    const TPM2B_PUBLIC *tpmPublicKey,
+    TPMI_ALG_HASH hashAlg,
+    TPM2B_DIGEST *fingerprint)
+{
+    /* Check for NULL parameters */
+    return_if_null(tpmPublicKey, "tpmPublicKey is NULL", TSS2_FAPI_RC_BAD_REFERENCE);
+
+    EVP_PKEY *evpPublicKey = NULL;
+    TSS2_RC r = TPM2_RC_SUCCESS;
+    uint8_t *pubKeyDer = NULL;
+    int pubKeyDerSize;
+    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext = NULL;
+    size_t hashSize;
+    size_t fingerPrintSize;
+
+    if (!(hashSize = ifapi_hash_get_digest_size(hashAlg))) {
+        goto_error(r, TSS2_FAPI_RC_BAD_VALUE,
+                   "Unsupported hash algorithm (%" PRIu16 ")", cleanup,
+                   hashAlg);
+    }
+
+    evpPublicKey = EVP_PKEY_new();
+    goto_if_null2(evpPublicKey, "Out of memory.", r, TSS2_FAPI_RC_MEMORY, cleanup);
+
+    if (tpmPublicKey->publicArea.type == TPM2_ALG_RSA) {
+        r = ossl_rsa_pub_from_tpm(tpmPublicKey, evpPublicKey);
+    } else if (tpmPublicKey->publicArea.type == TPM2_ALG_ECC)
+        r = ossl_ecc_pub_from_tpm(tpmPublicKey, evpPublicKey);
+    else {
+        goto_error(r,TSS2_FAPI_RC_BAD_VALUE, "Invalid alg id.", cleanup);
+    }
+    goto_if_error(r, "Get ossl public key.", cleanup);
+
+    /* Convert the OpenSSL EVP pub key into DEF format */
+    pubKeyDerSize = i2d_PUBKEY(evpPublicKey, &pubKeyDer);
+    if (pubKeyDerSize == -1) {
+        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "OSSL error", cleanup);
+    }
+
+    /* Compute the digest of the DER public key */
+    r = ifapi_crypto_hash_start(&cryptoContext, hashAlg);
+    goto_if_error(r, "crypto hash start", cleanup);
+
+    HASH_UPDATE_BUFFER(cryptoContext,
+                       pubKeyDer, pubKeyDerSize, r, cleanup);
+    r = ifapi_crypto_hash_finish(&cryptoContext,
+                                 &fingerprint->buffer[0], &fingerPrintSize);
+    goto_if_error(r, "crypto hash finish", cleanup);
+
+    fingerprint->size = fingerPrintSize;
+
+cleanup:
+    EVP_PKEY_free(evpPublicKey);
+    SAFE_FREE(pubKeyDer);
+    if (cryptoContext) {
+        ifapi_crypto_hash_abort(&cryptoContext);
+    }
     return r;
 }

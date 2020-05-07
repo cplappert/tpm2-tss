@@ -27,6 +27,7 @@ static TSS2_RC
 get_policy_elements(TPML_POLICYELEMENTS *policy, NODE_OBJECT_T **policy_element_list);
 
 /** Compute linked list with a list of policy elements which could be instantiated.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 static TSS2_RC
 get_policy_elements(TPML_POLICYELEMENTS *policy, NODE_OBJECT_T **policy_element_list)
@@ -35,7 +36,7 @@ get_policy_elements(TPML_POLICYELEMENTS *policy, NODE_OBJECT_T **policy_element_
     size_t i, j;
 
     for (i = 0; i < policy->count; i++) {
-        if (policy->elements[i].type ==  POLICYOR) {
+        if (policy->elements[i].type == POLICYOR) {
             /* Policy with sub policies */
             TPML_POLICYBRANCHES *branches = policy->elements[i].element.PolicyOr.branches;
             for (j = 0; j < branches->count; j++) {
@@ -50,7 +51,7 @@ get_policy_elements(TPML_POLICYELEMENTS *policy, NODE_OBJECT_T **policy_element_
     }
     return r;
 
- error_cleanup:
+error_cleanup:
     ifapi_free_node_list(*policy_element_list);
     return r;
 }
@@ -60,17 +61,18 @@ get_policy_elements(TPML_POLICYELEMENTS *policy, NODE_OBJECT_T **policy_element_
  * Parts of policies which are referenced by object paths will be replaced with
  * the appropriate values of the referenced objects.
  *
- * @parm[in] context The context storing information for re-entry after try again.
- * @parm[in] policy The policy to be instantiated.
- * @parm[in] callbacks The needed callback functions with the corresponding user data
+ * @param[in] context The context storing information for re-entry after try again.
+ * @param[in] policy The policy to be instantiated.
+ * @param[in] callbacks The needed callback functions with the corresponding user data
  *           which will be passed to the callback.
  * @retval TSS2_RC_SUCCESS on success.
  * @retval FAPI error codes on failure
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 TSS2_RC
 ifapi_policyeval_instantiate_async(
     IFAPI_POLICY_EVAL_INST_CTX *context, /* For re-entry after try_again for offsets and such */
-    TPMS_POLICY_HARNESS *policy, /* in */
+    TPMS_POLICY *policy, /* in */
     ifapi_policyeval_INST_CB *callbacks)
 {
     TSS2_RC r;
@@ -87,6 +89,14 @@ ifapi_policyeval_instantiate_async(
     return r;
 }
 
+/** Compute name and public information format a PEM key.
+ *
+ * @param[in]  keyPEM The key in PEM format.
+ * @param[out] keyPublic The public information of the PEM key.
+ * @param[out] name the name computed from the public information.
+ * @param[in]  hash_alg The name alg of the key has to passed.
+ * @retval TSS2_RC_SUCCESS on success.
+ */
 static TSS2_RC
 set_pem_key_param(
     const char *keyPEM,
@@ -97,8 +107,8 @@ set_pem_key_param(
     TSS2_RC r;
     TPM2B_PUBLIC public;
 
-    if (!keyPEM ||  strlen(keyPEM) == 0) {
-        /* No PEM key used. Parmeters are already set in policy. */
+    if (!keyPEM || strlen(keyPEM) == 0) {
+        /* No PEM key used. Parameters are already set in policy. */
         return TSS2_RC_SUCCESS;
     }
 
@@ -120,7 +130,6 @@ set_pem_key_param(
     return TSS2_RC_SUCCESS;
 }
 
-
 #define CHECK_TEMPLATE_PATH(path, template) \
      if (!path) { \
          return_error2(TSS2_FAPI_RC_BAD_TEMPLATE, "No path for policy %s", template); \
@@ -131,10 +140,25 @@ set_pem_key_param(
  * All needed asyncroous callbacks will be executed for all policy elements offset
  * The policy.
  *
- * @parm[in] context The context storing information for re-entry after try again.
+ * @param[in] context The context storing information for re-entry after try again.
  * @retval TSS2_RC_SUCCESS on success.
  * @retval TSS2_FAPI_RC_BAD_TEMPLATE If the templayte is not complete for instantiation.
  * @retval FAPI error codes on failure
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_SEQUENCE if the context has an asynchronous
+ *         operation already pending.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_IO_ERROR if an error occurred while accessing the
+ *         object store.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 ifapi_policyeval_instantiate_finish(
@@ -179,7 +203,6 @@ ifapi_policyeval_instantiate_finish(
             return_if_error(r, "read_finish failed");
             /* Clear keypath, only public data will be needed */
             SAFE_FREE(pol_element->element.PolicySigned.keyPath);
-
 
             break;
 
@@ -259,7 +282,7 @@ ifapi_policyeval_instantiate_finish(
 
         case POLICYDUPLICATIONSELECT:
             if (pol_element->element.PolicyDuplicationSelect.newParentPublic.publicArea.type) {
-                 /* public data is already set in policy. Path will not be needed. */
+                /* public data is already set in policy. Path will not be needed. */
                 SAFE_FREE(pol_element->element.PolicyDuplicationSelect.newParentPath);
                 break;
             }
@@ -295,8 +318,8 @@ ifapi_policyeval_instantiate_finish(
                                 "PolicyAuthorizeNv");
             /* Object name will be added to policy. */
             r = context->callbacks.cbnvpublic(pol_element->element.PolicyAuthorizeNv.nvPath,
-                                               &pol_element->element.PolicyAuthorizeNv.nvPublic,
-                                               context->callbacks.cbnvpublic_userdata);
+                                              &pol_element->element.PolicyAuthorizeNv.nvPublic,
+                                              context->callbacks.cbnvpublic_userdata);
             return_try_again(r);
             return_if_error(r, "read_finish failed");
             /* Clear NV path, only public data will be needed */
@@ -317,10 +340,10 @@ ifapi_policyeval_instantiate_finish(
             if (pol_element->element.PolicyAuthorize.keyPEM &&
                 strlen(pol_element->element.PolicyAuthorize.keyPEM) > 0) {
                 /* Determine name and public info for PEM key. */
-                r =  set_pem_key_param(pol_element->element.PolicyAuthorize.keyPEM,
-                                       &pol_element->element.PolicyAuthorize.keyPublic,
-                                       &pol_element->element.PolicyAuthorize.keyName,
-                                       pol_element->element.PolicyAuthorize.keyPEMhashAlg);
+                r = set_pem_key_param(pol_element->element.PolicyAuthorize.keyPEM,
+                                      &pol_element->element.PolicyAuthorize.keyPublic,
+                                      &pol_element->element.PolicyAuthorize.keyName,
+                                      pol_element->element.PolicyAuthorize.keyPEMhashAlg);
                 return_if_error(r, "Set parameter of pem key.");
 
                 pol_element->element.PolicyAuthorize.keyPEM = NULL;

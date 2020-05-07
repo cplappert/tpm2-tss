@@ -30,11 +30,12 @@
  *
  * The structures for policy and callback execution are allocated
  * and the callbacks are assigned.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
  */
 static TSS2_RC
 new_policy(
     FAPI_CONTEXT *context,
-    TPMS_POLICY_HARNESS *harness,
+    TPMS_POLICY *policy,
     IFAPI_POLICYUTIL_STACK **current_policy)
 {
     LOG_DEBUG("ADD POLICY");
@@ -66,12 +67,12 @@ new_policy(
     pol_exec_ctx->callbacks.cbaction = ifapi_policy_action;
     pol_exec_ctx->callbacks.cbaction_userdata = context;
 
-    pol_exec_cb_ctx =  calloc(sizeof(IFAPI_POLICY_EXEC_CB_CTX), 1);
+    pol_exec_cb_ctx = calloc(sizeof(IFAPI_POLICY_EXEC_CB_CTX), 1);
     if (!pol_exec_cb_ctx) {
         return_error(TSS2_FAPI_RC_MEMORY, "Out of memory");
     }
     pol_exec_ctx->app_data = pol_exec_cb_ctx;
-    pol_exec_ctx->harness = harness;
+    pol_exec_ctx->policy = policy;
     if (!context->policy.policyutil_stack) {
         context->policy.policyutil_stack = *current_policy;
         context->policy.util_current_policy = *current_policy;
@@ -83,6 +84,10 @@ new_policy(
 }
 
 /** Compute a new session which will be uses as policy session.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 static TSS2_RC
 create_session(
@@ -117,7 +122,7 @@ create_session(
 
     default:
         context->state = _FAPI_STATE_INTERNALERROR;
-        goto_error(r, TSS2_FAPI_RC_BAD_VALUE, "Invalid state for create session.",
+        goto_error(r, TSS2_FAPI_RC_GENERAL_FAILURE, "Invalid state for create session.",
                    cleanup);
     }
 
@@ -126,6 +131,7 @@ cleanup:
 }
 
 /** Cleanup the current policy and adapt the policy stack.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
  */
 static TSS2_RC
 clear_current_policy(FAPI_CONTEXT *context)
@@ -182,7 +188,7 @@ clear_all_policies(FAPI_CONTEXT *context)
  * to be executed will be computed.
  * @param[in,out] context The fapi context with the pointer to the policy stack.
  * @param[in] hash_alg The hash algorithm used for the policy computation.
- * @param[in,out] harness The policy to be executed. Some policy elements will
+ * @param[in,out] policy The policy to be executed. Some policy elements will
  *                be used to store computed parameters needed for policy
  *                execution.
  * @retval TSS2_RC_SUCCESS on success.
@@ -193,27 +199,30 @@ clear_all_policies(FAPI_CONTEXT *context)
  *         callback does not identify a branch.
  * @retval TSS2_FAPI_RC_BAD_REFERENCE If no context is passed.
  *
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 ifapi_policyutil_execute_prepare(
     FAPI_CONTEXT *context,
     TPMI_ALG_HASH hash_alg,
-    TPMS_POLICY_HARNESS *harness)
+    TPMS_POLICY *policy)
 {
     TSS2_RC r;
     IFAPI_POLICYUTIL_STACK *current_policy;
 
     return_if_null(context, "Bad context.", TSS2_FAPI_RC_BAD_REFERENCE);
 
-    r = new_policy(context, harness, &current_policy);
+    r = new_policy(context, policy, &current_policy);
     goto_if_error(r, "Create new policy.", error);
 
-    r = ifapi_policyeval_execute_prepare(current_policy->pol_exec_ctx, hash_alg, harness);
+    r = ifapi_policyeval_execute_prepare(current_policy->pol_exec_ctx, hash_alg, policy);
     goto_if_error(r, "Prepare policy execution.", error);
 
     return r;
 
- error:
+error:
     while (context->policy.policyutil_stack) {
         clear_all_policies(context);
     }
@@ -234,11 +243,24 @@ ifapi_policyutil_execute_prepare(
  * @retval TSS2_FAPI_RC_BAD_VALUE If wrong values are detected during execution.
  * @retval TSS2_FAPI_RC_IO_ERROR If an error occurs during access to the policy
  *         store.
- * @retval TSS2_FAPI_RC_POLICY_UNKNOWN If policy search for a certain policy diges was
-           not successful.
+ * @retval TSS2_FAPI_RC_POLICY_UNKNOWN If policy search for a certain policy digest was
+ *         not successful.
  * @retval TSS2_FAPI_RC_BAD_TEMPLATE In a invalid policy is loaded during execution.
  * @retval TPM2_RC_BAD_AUTH If the authentication for an object needed for policy
  *         execution fails.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_BAD_SEQUENCE if the context has an asynchronous
+ *         operation already pending.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_PATH_NOT_FOUND if a FAPI object path was not found
+ *         during authorization.
+ * @retval TSS2_FAPI_RC_KEY_NOT_FOUND if a key was not found.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_UNKNOWN if a required authorization callback
+ *         is not set.
+ * @retval TSS2_FAPI_RC_AUTHORIZATION_FAILED if the authorization attempt fails.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
  */
 TSS2_RC
 ifapi_policyutil_execute(FAPI_CONTEXT *context, ESYS_TR *session)
@@ -305,7 +327,7 @@ ifapi_policyutil_execute(FAPI_CONTEXT *context, ESYS_TR *session)
     LOG_TRACE("success");
     return r;
 
- error:
+error:
     while (context->policy.policyutil_stack) {
         clear_all_policies(context);
     }
