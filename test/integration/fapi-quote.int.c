@@ -97,7 +97,7 @@ test_fapi_quote(FAPI_CONTEXT *context)
     assert(certificate != NULL);
     assert(strlen(quoteInfo) > ASSERT_SIZE);
     assert(strlen(pcrEventLog) > ASSERT_SIZE);
-    assert(strlen(certificate) > ASSERT_SIZE);
+    assert(strlen(certificate) == 0);
 
     r = Fapi_ExportKey(context, "HS/SRK/mySignKey", NULL, &export_data);
     goto_if_error(r, "Export.", error);
