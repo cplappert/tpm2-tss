@@ -99,7 +99,7 @@ test_fapi_key_create_policy_pcr_sign(FAPI_CONTEXT *context)
 
     r = Fapi_SetCertificate(context, "HS/SRK/mySignKey", "-----BEGIN "\
         "CERTIFICATE-----[...]-----END CERTIFICATE-----");
-    goto_if_error(r, "Error Fapi_CreateKey", error);
+    goto_if_error(r, "Error Fapi_SetCertificate", error);
 
     size_t signatureSize = 0;
 

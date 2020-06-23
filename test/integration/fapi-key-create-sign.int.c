@@ -156,7 +156,7 @@ test_fapi_key_create_sign(FAPI_CONTEXT *context)
     assert(publicblob != NULL);
     assert(privateblob != NULL);
     assert(policy != NULL);
-    assert(strlen(policy) > ASSERT_SIZE || strlen(policy) == 0);
+    assert(strlen(policy) == 0);
 
     r = Fapi_SetCertificate(context, "HS/SRK/mySignKey", cert);
     goto_if_error(r, "Error Fapi_SetCertificate", error);
