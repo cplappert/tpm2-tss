@@ -2692,9 +2692,13 @@ ifapi_key_sign(
         context->Key_Sign.handle = ESYS_TR_NONE;
         *tpm_signature = context->Key_Sign.signature;
         if (certificate) {
-            *certificate = strdup(context->Key_Sign.key_object->misc.key.certificate);
-            goto_if_null(*certificate, "Out of memory.",
-                    TSS2_FAPI_RC_MEMORY, cleanup);
+            if (context->Key_Sign.key_object->misc.key.certificate) {
+                *certificate = strdup(context->Key_Sign.key_object->misc.key.certificate);
+                goto_if_null(*certificate, "Out of memory.",
+                             TSS2_FAPI_RC_MEMORY, cleanup);
+            } else {
+                strdup_check(*certificate, "", r, cleanup);
+            }
         }
         context->Key_Sign.state = SIGN_INIT;
         LOG_TRACE("success");

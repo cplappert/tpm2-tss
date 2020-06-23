@@ -393,6 +393,7 @@ typedef struct {
     TPMI_YES_NO decrypt;            /**< Switch for symmetric algs */
     TPMT_SIGNATURE *signature;      /**< Produced TPM singature */
     char const *padding;            /**< Optional padding parameter for key sign. */
+    char *certificate;              /**< Certificate of the signing key. */
 } IFAPI_Key_Sign;
 
 /** The data structure holding internal state of Fapi_Unseal.

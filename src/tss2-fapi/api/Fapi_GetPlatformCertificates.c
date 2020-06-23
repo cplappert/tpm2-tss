@@ -230,6 +230,7 @@ Fapi_GetPlatformCertificates_Finish(
                     cert = cert->next;
                 }
             } else {
+                *certificates = NULL;
                 if (certificatesSize)
                     *certificatesSize = 0;
                 goto_error(r, TSS2_FAPI_RC_NO_CERT,
@@ -240,7 +241,7 @@ Fapi_GetPlatformCertificates_Finish(
     }
 
     /* Cleanup any intermediate results and state stored in the context. */
-    ifapi_free_object_list(cert_list);
+    ifapi_free_node_list(cert_list);
     SAFE_FREE(context->cmd.Provision.capabilityData);
     context->state =  _FAPI_STATE_INIT;
     LOG_TRACE("finished");

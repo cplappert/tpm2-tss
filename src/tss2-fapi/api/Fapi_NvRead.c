@@ -310,7 +310,11 @@ Fapi_NvRead_Finish(
         if (logData) {
             /* Duplicate the logdata that may have been stored during a
                NvExtend command. */
-            strdup_check(*logData, object->misc.nv.event_log, r, error_cleanup);
+            if (object->misc.nv.event_log) {
+                strdup_check(*logData, object->misc.nv.event_log, r, error_cleanup);
+            } else {
+               strdup_check(*logData, "", r, error_cleanup);
+            }
         }
         fallthrough;
 

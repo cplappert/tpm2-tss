@@ -420,7 +420,8 @@ Fapi_Quote_Finish(
             fallthrough;
 
         statecase(context->state, PCR_QUOTE_READ_EVENT_LIST);
-            r = ifapi_eventlog_get_finish(&context->eventlog, &context->io, pcrLog);
+            r = ifapi_eventlog_get_finish(&context->eventlog, &context->io,
+                                          &command->pcrLog);
             return_try_again(r);
             goto_if_error(r, "Error getting event log", error_cleanup);
             fallthrough;
@@ -430,6 +431,7 @@ Fapi_Quote_Finish(
             r = ifapi_cleanup_session(context);
             try_again_or_error_goto(r, "Cleanup", error_cleanup);
 
+            *pcrLog = command->pcrLog;
             context->state = _FAPI_STATE_INIT;
             break;
 
