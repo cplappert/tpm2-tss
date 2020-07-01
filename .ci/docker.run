@@ -77,7 +77,7 @@ fi
 if [ "$SCANBUILD" == "yes" ]; then
   scan-build --status-bugs ../configure --enable-tcti-partial-reads=$WITH_TCTI_PARTIAL --enable-tcti-device-async=$WITH_TCTI_ASYNC --enable-unit --enable-integration --with-crypto=$WITH_CRYPTO $CONFIGURE_OPTIONS
 elif [ "$CC" == "clang" ]; then
-  ../configure --enable-tcti-partial-reads=$WITH_TCTI_PARTIAL --enable-tcti-device-async=$WITH_TCTI_ASYNC --enable-unit --enable-integration --with-crypto=$WITH_CRYPTO $CONFIGURE_OPTIONS
+  ../configure --with-sanitizer=address --enable-tcti-partial-reads=$WITH_TCTI_PARTIAL --enable-tcti-device-async=$WITH_TCTI_ASYNC --enable-unit --enable-integration --with-crypto=$WITH_CRYPTO $CONFIGURE_OPTIONS
 else
   ../configure --with-sanitizer=undefined,address --enable-tcti-partial-reads=$WITH_TCTI_PARTIAL --enable-tcti-device-async=$WITH_TCTI_ASYNC --enable-unit --enable-integration --with-crypto=$WITH_CRYPTO $CONFIGURE_OPTIONS
 fi
