@@ -5,6 +5,11 @@ set -e
 
 source $TRAVIS_BUILD_DIR/.ci/docker-prelude.sh
 
+export LSAN_OPTIONS=verbosity=1:log_threads=1
+
+echo LSAN_OPTIONS
+echo $LSAN_OPTIONS
+
 export CONFIGURE_OPTIONS=
 
 if [ -d build ]; then
