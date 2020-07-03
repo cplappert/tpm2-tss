@@ -70,7 +70,7 @@ test_fapi_get_random(FAPI_CONTEXT *context)
     goto_if_error(r, "Error Fapi_GetRandom", error);
     assert(randomBytes != NULL);
 
-    Fapi_Free(randomBytes);
+    // Fapi_Free(randomBytes); // introduce leak here for sanitizer checks
 
     /* Cleanup */
     r = Fapi_Delete(context, "/");
