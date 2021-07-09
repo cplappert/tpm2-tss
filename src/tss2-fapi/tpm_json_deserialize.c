@@ -3385,6 +3385,34 @@ ifapi_json_TPMI_RSA_KEY_BITS_deserialize(json_object *jso,
         1024, 2048);
 }
 
+/** Deserialize a TPM2B_LABEL json object.
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
+TSS2_RC
+ifapi_json_TPM2B_LABEL_deserialize(json_object *jso,
+        TPM2B_LABEL *out)
+{
+    TSS2_RC r;
+    LOG_TRACE("call");
+    return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
+
+    UINT16 size = 0;
+    r = ifapi_json_byte_deserialize(jso, TPM2_LABEL_MAX_BUFFER,
+                                     (BYTE *)&out->buffer, &size);
+    return_if_error(r, "byte serialize");
+
+    out->size = size;
+    return r;
+    LOG_TRACE("true");
+    return TSS2_RC_SUCCESS;
+}
+
+
 /** Deserialize a TPM2B_ECC_PARAMETER json object.
  *
  * @param[in]  jso the json object to be deserialized.
@@ -3411,6 +3439,48 @@ ifapi_json_TPM2B_ECC_PARAMETER_deserialize(json_object *jso,
     LOG_TRACE("true");
     return TSS2_RC_SUCCESS;
 }
+
+static char *field_TPMS_DERIVE_tab[] = {
+    "label",
+    "context",
+    "$schema"
+};
+
+/** Deserialize a TPMS_DERIVE json object.
+ *
+ * @param[in]  jso the json object to be deserialized.
+ * @param[out] out the deserialzed binary object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the json object can't be deserialized.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
+TSS2_RC
+ifapi_json_TPMS_DERIVE_deserialize(json_object *jso, TPMS_DERIVE *out)
+{
+    json_object *jso2;
+    TSS2_RC r;
+    LOG_TRACE("call");
+    return_if_null(out, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
+
+    ifapi_check_json_object_fields(jso, &field_TPMS_DERIVE_tab[0],
+                                   SIZE_OF_ARY(field_TPMS_DERIVE_tab));
+    if (!ifapi_get_sub_object(jso, "label", &jso2)) {
+        LOG_ERROR("Field \"label\" not found.");
+        return TSS2_FAPI_RC_BAD_VALUE;
+    }
+    r = ifapi_json_TPM2B_LABEL_deserialize(jso2, &out->label);
+    return_if_error(r, "Bad value for field \"label\".");
+
+    if (!ifapi_get_sub_object(jso, "context", &jso2)) {
+        LOG_ERROR("Field \"context\" not found.");
+        return TSS2_FAPI_RC_BAD_VALUE;
+    }
+    r = ifapi_json_TPM2B_LABEL_deserialize(jso2, &out->context);
+    return_if_error(r, "Bad value for field \"context\".");
+    LOG_TRACE("true");
+    return TSS2_RC_SUCCESS;
+}
+
 
 static char *field_TPMS_ECC_POINT_tab[] = {
     "x",
@@ -3866,7 +3936,13 @@ ifapi_json_TPMU_PUBLIC_ID_deserialize(
     LOG_TRACE("call");
     switch (selector) {
     case TPM2_ALG_KEYEDHASH:
-        return ifapi_json_TPM2B_DIGEST_deserialize(jso, &out->keyedHash);
+        LOG_DEBUG("JSONARRAY: %s", json_object_to_json_string (jso));
+        if( json_object_object_get_ex(jso, "label", NULL) ){
+            return ifapi_json_TPMS_DERIVE_deserialize(jso, &out->derive);
+        }
+        else{
+            return ifapi_json_TPM2B_DIGEST_deserialize(jso, &out->keyedHash);
+        }
     case TPM2_ALG_SYMCIPHER:
         return ifapi_json_TPM2B_DIGEST_deserialize(jso, &out->sym);
     case TPM2_ALG_RSA:

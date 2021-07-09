@@ -342,7 +342,14 @@ ifapi_json_TPM2B_ECC_PARAMETER_deserialize(json_object *jso,
         TPM2B_ECC_PARAMETER *out);
 
 TSS2_RC
+ifapi_json_TPM2B_LABEL_deserialize(json_object *jso,
+        TPM2B_LABEL *out);
+
+TSS2_RC
 ifapi_json_TPMS_ECC_POINT_deserialize(json_object *jso, TPMS_ECC_POINT *out);
+
+TSS2_RC
+ifapi_json_TPMS_DERIVE_deserialize(json_object *jso, TPMS_DERIVE *out);
 
 TSS2_RC
 ifapi_json_TPMI_ALG_ECC_SCHEME_deserialize(json_object *jso,
