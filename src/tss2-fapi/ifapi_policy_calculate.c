@@ -879,6 +879,79 @@ cleanup:
     return r;
 }
 
+/** Compute policy bound to a specific templatePublic.
+ *
+ * The policy digest will be updated with the function
+ * ifapi_calculate_policy_digest_hash() which will add the hash of the
+ * templatePublic.
+ *
+ * @param[in] policy The policy templateHash or the templatePublic.
+ * @param[in,out] current_digest The digest list which has to be updated.
+ * @param[in] current_hash_alg The hash algorithm used for the policy computation.
+ *
+ * @retval TSS2_RC_SUCCESS on success.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if an invalid value was passed into
+ *         the function.
+ * @retval TSS2_FAPI_RC_GENERAL_FAILURE if an internal error occurred.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ * @retval TSS2_FAPI_RC_MEMORY if not enough memory can be allocated.
+ */
+TSS2_RC
+ifapi_calculate_policy_template_hash(
+    TPMS_POLICYTEMPLATE *policy,
+    TPML_DIGEST_VALUES *current_digest,
+    TPMI_ALG_HASH current_hash_alg)
+{
+    TSS2_RC r = TSS2_RC_SUCCESS;
+    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext = NULL;
+    size_t hash_size;
+    TPM2B_DIGEST *templateHash;
+    TPM2B_DIGEST computedTemplateHash;
+    size_t offset = 0;
+    size_t buffer_size = sizeof(TPMT_PUBLIC);
+    uint8_t buffer[buffer_size];
+
+    LOG_DEBUG("call");
+
+    if (policy->templateHash.size) {
+        templateHash = &policy->templateHash;
+    } else {
+        /* Compute hash from templatePublic */
+
+        if (policy->derive) {
+            r = Tss2_MU_TPMT_PUBLIC_DERIVE_Marshal(&policy->templatePublic,
+                                                   buffer, buffer_size, &offset);
+            return_if_error(r, "Marshal templatePublic (derive)");
+        } else {
+            r = Tss2_MU_TPMT_PUBLIC_Marshal(&policy->templatePublic,
+                                            buffer, buffer_size, &offset);
+            return_if_error(r, "Marshal templatePublic.");
+        }
+        r = ifapi_crypto_hash_start(&cryptoContext, current_hash_alg);
+        return_if_error(r, "crypto hash start");
+
+        HASH_UPDATE_BUFFER(cryptoContext, &buffer[0], offset, r, cleanup);
+        r = ifapi_crypto_hash_finish(&cryptoContext,
+                                 (uint8_t *) &computedTemplateHash.buffer[0],
+                                 &hash_size);
+        return_if_error(r, "crypto hash finish");
+
+        computedTemplateHash.size = hash_size;
+        templateHash = &computedTemplateHash;
+    }
+
+    /* Update the policy with the computed hash value. */
+    r = ifapi_calculate_policy_digest_hash(templateHash,
+                                           current_digest,
+                                           current_hash_alg, TPM2_CC_PolicyNameHash);
+    return_if_error(r, "Calculate digest hash for policy");
+
+cleanup:
+    if (cryptoContext)
+        ifapi_crypto_hash_abort(&cryptoContext);
+    return r;
+}
+
 /** Compute policy bound to a specific command and command parameters.
  *
  * The cp hash value and the command code will be updated by the
@@ -1350,6 +1423,12 @@ ifapi_calculate_policy(
             r = ifapi_calculate_policy_cp_hash(&policy->elements[i].element.PolicyCpHash,
                                                &policy->elements[i].policyDigests, hash_alg);
             return_if_error(r, "Compute policy cp hash");
+            break;
+
+        case POLICYTEMPLATE:
+            r = ifapi_calculate_policy_template_hash(&policy->elements[i].element.PolicyTemplate,
+                                               &policy->elements[i].policyDigests, hash_alg);
+            return_if_error(r, "Compute policy template hash");
             break;
 
         case POLICYLOCALITY:

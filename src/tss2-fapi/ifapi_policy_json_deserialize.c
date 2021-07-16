@@ -995,6 +995,35 @@ ifapi_json_TPMS_POLICYNVWRITTEN_deserialize(json_object *jso,
     return TSS2_RC_SUCCESS;
 }
 
+static char *derivation_field_tab[] =
+    {
+     "templatePublic",
+     "unique",
+     "label",
+    };
+
+/** Determine whether templatePublic is used for key derivation.*
+ *
+ * @param[in]  jso the json object of used public data.
+ * @retval true if used for derivation.
+ * @retval false if not used for derivation.
+ */
+bool public_for_derivation(json_object *jso)
+{
+    size_t i;
+    json_object *jso_sub;
+
+    for (i = 0; i < SIZE_OF_ARY(derivation_field_tab); i++) {
+        if (ifapi_get_sub_object(jso, derivation_field_tab[i], &jso_sub)) {
+            jso = jso_sub;
+        } else {
+            return false;
+        }
+    }
+    return true;
+}
+
+
 static char *field_TPMS_POLICYTEMPLATE_tab[] = {
     "templateHash",
     "templatehash",
@@ -1002,6 +1031,7 @@ static char *field_TPMS_POLICYTEMPLATE_tab[] = {
     "templatepublic",
     "templateName",
     "templatename",
+    "derive",
     "$schema",
     "type",
     "policyDigests",
@@ -1021,7 +1051,7 @@ TSS2_RC
 ifapi_json_TPMS_POLICYTEMPLATE_deserialize(json_object *jso,
         TPMS_POLICYTEMPLATE *out)
 {
-    json_object *jso2;
+    json_object *jso2, *jso_derive;
     TSS2_RC r;
     size_t cond_cnt = 0; /**< counter for conditional fields */
 
@@ -1038,11 +1068,24 @@ ifapi_json_TPMS_POLICYTEMPLATE_deserialize(json_object *jso,
         return_if_error(r, "Bad value for field \"templateHash\".");
     }
 
+
     if (!ifapi_get_sub_object(jso, "templatePublic", &jso2)) {
-        memset(&out->templatePublic, 0, sizeof(TPM2B_PUBLIC));
+        out->derive = TPM2_NO;
+        memset(&out->templatePublic, 0, sizeof(TPMT_PUBLIC));
     } else {
         cond_cnt++;
-        r = ifapi_json_TPM2B_PUBLIC_deserialize(jso2, &out->templatePublic);
+        if (ifapi_get_sub_object(jso, "derive", &jso_derive)) {
+            r = ifapi_json_TPMI_YES_NO_deserialize(jso_derive, &out->derive);
+            return_if_error(r, "Yes or No expected.");
+        } else {
+            if (public_for_derivation(jso)) {
+                out->derive = TPM2_YES;
+            } else {
+                out->derive = TPM2_NO;
+            }
+        }
+
+        r = ifapi_json_TPMT_PUBLIC_deserialize(jso2, &out->templatePublic);
         return_if_error(r, "Bad value for field \"templatePublic\".");
     }
 

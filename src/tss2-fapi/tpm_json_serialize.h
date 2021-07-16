@@ -504,4 +504,18 @@ TSS2_RC
 ifapi_json_TPM2B_CREATION_DATA_serialize(const TPM2B_CREATION_DATA *in,
         json_object **jso);
 
+TSS2_RC
+ifapi_json_TPM2B_LABEL_serialize(const TPM2B_LABEL *in, json_object **jso);
+
+TSS2_RC
+ifapi_json_TPMS_DERIVE_serialize(const TPMS_DERIVE *in,
+                                 json_object **jso);
+
+TSS2_RC
+ifapi_json_TPMU_PUBLIC_ID_derive_serialize(const TPMU_PUBLIC_ID *in,
+                                           UINT32 selector, json_object **jso);
+
+TSS2_RC
+ifapi_json_TPMT_PUBLIC_derive_serialize(const TPMT_PUBLIC *in, json_object **jso);
+
 #endif /* FAPI_TPM_JSON_SERIALIZE_H */

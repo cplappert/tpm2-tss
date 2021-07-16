@@ -173,7 +173,8 @@ typedef struct {
  */
 typedef struct {
     TPM2B_DIGEST                           templateHash;    /**< None */
-    TPM2B_PUBLIC                         templatePublic;    /**< None */
+    TPMT_PUBLIC                          templatePublic;    /**< None */
+    TPMI_YES_NO                                  derive;    /**< derive key, default NO */
     char                                  *templateName;    /**< None */
 } TPMS_POLICYTEMPLATE;
 

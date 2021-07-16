@@ -11,6 +11,8 @@
 #include <stdio.h>
 
 #include "tpm_json_serialize.h"
+#include "tpm_json_deserialize.h"
+
 #define LOGMODULE fapijson
 #include "util/log.h"
 #include "util/aux_util.h"
@@ -3992,5 +3994,142 @@ ifapi_json_TPM2B_CREATION_DATA_serialize(const TPM2B_CREATION_DATA *in, json_obj
 
     json_object_object_add(*jso, "creationData", jso2);
 
+    return TSS2_RC_SUCCESS;
+}
+
+/** Serialize value of type TPM2B_LABEL to json.
+ *
+ * @param[in] in value to be serialized.
+ * @param[out] jso pointer to the json object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPM2B_DIGEST.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
+TSS2_RC
+ifapi_json_TPM2B_LABEL_serialize(const TPM2B_LABEL *in, json_object **jso)
+{
+    return_if_null(in, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
+
+    if (in->size > TPM2_LABEL_MAX_BUFFER) {
+        LOG_ERROR("Too many bytes for array (%"PRIuPTR" > %"PRIuPTR" = TPM2_LABEL_MAX_BUFFER",
+                  (size_t)in->size, (size_t)TPM2_LABEL_MAX_BUFFER);
+        return TSS2_FAPI_RC_BAD_VALUE;
+    }
+    char hex_string[((size_t)in->size)*2+1];
+
+    for (size_t i = 0, off = 0; i < in->size; i++, off+=2)
+        sprintf(&hex_string[off], "%02x", in->buffer[i]);
+    hex_string[(in->size)*2] = '\0';
+    *jso = json_object_new_string (hex_string);
+    return_if_null(*jso, "Out of memory.", TSS2_FAPI_RC_MEMORY);
+
+    return TSS2_RC_SUCCESS;
+}
+
+/** Serialize a TPMS_DERIVE structure to json.
+ *
+ * @param[in] in value to be serialized.
+ * @param[out] jso pointer to the json object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMS_PCR_SELECTION.
+ */
+TSS2_RC
+ifapi_json_TPMS_DERIVE_serialize(const TPMS_DERIVE *in,
+                                 json_object **jso)
+{
+    if (*jso == NULL) {
+        *jso = json_object_new_object();
+        return_if_null(*jso, "Out of memory.", TSS2_FAPI_RC_MEMORY);
+    }
+    TSS2_RC r;
+    json_object *jso2 = NULL;
+    r = ifapi_json_TPM2B_LABEL_serialize(&in->label, &jso2);
+    return_if_error(r, "Serialize label");
+
+    json_object_object_add(*jso, "label", jso2);
+    jso2 = NULL;
+    r = ifapi_json_TPM2B_LABEL_serialize(&in->context, &jso2);
+    return_if_error(r, "Serialize context");
+
+    json_object_object_add(*jso, "context", jso2);
+
+    return TSS2_RC_SUCCESS;
+}
+
+/**  Serialize a TPMU_PUBLIC_ID (derive version) to json.
+ *
+ * This function expects the Bitfield to be encoded as unsigned int in host-endianess.
+ * @param[in] in the value to be serialized.
+ * @param[in] selector the type of the public ID.
+ * @param[out] jso pointer to the json object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMU_PUBLIC_ID.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
+TSS2_RC
+ifapi_json_TPMU_PUBLIC_ID_derive_serialize(const TPMU_PUBLIC_ID *in, UINT32 selector, json_object **jso)
+{
+    switch (selector) {
+        case TPM2_ALG_KEYEDHASH:
+            return ifapi_json_TPMS_DERIVE_serialize(&in->derive, jso);
+        default:
+            LOG_ERROR("\nSelector %"PRIx32 " did not match", selector);
+            return TSS2_FAPI_RC_BAD_VALUE;
+    };
+    return TSS2_RC_SUCCESS;
+}
+
+
+/** Serialize value of type TPMT_PUBLIC (derive version) to json.
+ *
+ * @param[in] in value to be serialized.
+ * @param[out] jso pointer to the json object.
+ * @retval TSS2_RC_SUCCESS if the function call was a success.
+ * @retval TSS2_FAPI_RC_MEMORY: if the FAPI cannot allocate enough memory.
+ * @retval TSS2_FAPI_RC_BAD_VALUE if the value is not of type TPMT_PUBLIC.
+ * @retval TSS2_FAPI_RC_BAD_REFERENCE a invalid null pointer is passed.
+ */
+TSS2_RC
+ifapi_json_TPMT_PUBLIC_derive_serialize(const TPMT_PUBLIC *in, json_object **jso)
+{
+    return_if_null(in, "Bad reference.", TSS2_FAPI_RC_BAD_REFERENCE);
+
+    TSS2_RC r;
+    json_object *jso2;
+    if (*jso == NULL)
+        *jso = json_object_new_object ();
+    jso2 = NULL;
+    r = ifapi_json_TPMI_ALG_PUBLIC_serialize(in->type, &jso2);
+    return_if_error(r, "Serialize TPMI_ALG_PUBLIC");
+
+    json_object_object_add(*jso, "type", jso2);
+    jso2 = NULL;
+    r = ifapi_json_TPMI_ALG_HASH_serialize(in->nameAlg, &jso2);
+    return_if_error(r, "Serialize TPMI_ALG_HASH");
+
+    json_object_object_add(*jso, "nameAlg", jso2);
+    jso2 = NULL;
+    r = ifapi_json_TPMA_OBJECT_serialize(in->objectAttributes, &jso2);
+    return_if_error(r, "Serialize TPMA_OBJECT");
+
+    json_object_object_add(*jso, "objectAttributes", jso2);
+    jso2 = NULL;
+    r = ifapi_json_TPM2B_DIGEST_serialize(&in->authPolicy, &jso2);
+    return_if_error(r, "Serialize TPM2B_DIGEST");
+
+    json_object_object_add(*jso, "authPolicy", jso2);
+    jso2 = NULL;
+    r = ifapi_json_TPMU_PUBLIC_PARMS_serialize(&in->parameters, in->type, &jso2);
+    return_if_error(r,"Serialize TPMU_PUBLIC_PARMS");
+
+    json_object_object_add(*jso, "parameters", jso2);
+    jso2 = NULL;
+    r = ifapi_json_TPMU_PUBLIC_ID_derive_serialize(&in->unique, in->type, &jso2);
+    return_if_error(r,"Serialize TPMU_PUBLIC_ID");
+
+    json_object_object_add(*jso, "unique", jso2);
     return TSS2_RC_SUCCESS;
 }

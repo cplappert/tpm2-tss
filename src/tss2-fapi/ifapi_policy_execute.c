@@ -1239,6 +1239,94 @@ execute_policy_cp_hash(
     return r;
 }
 
+/** Execute a policy for binding the policy to command parameters.
+ *
+ * @param[in,out] *esys_ctx The ESAPI context which is needed to execute the
+ *                policy command.
+ * @param[in,out] policy The policy with the cp hash.
+ * @param[in,out] current_policy The policy context which stores the state
+ *                of the policy execution.
+ * @retval TSS2_RC_SUCCESS on success.
+ * @retval TSS2_FAPI_RC_TRY_AGAIN if an I/O operation is not finished yet and
+ *         this function needs to be called again.
+ * @retval TSS2_FAPI_RC_BAD_SEQUENCE if the context has an asynchronous
+ *         operation already pending.
+ * @retval TSS2_ESYS_RC_* possible error codes of ESAPI.
+ */
+static TSS2_RC
+execute_policy_template(
+    ESYS_CONTEXT *esys_ctx,
+    TPMS_POLICYTEMPLATE *policy,
+    IFAPI_POLICY_EXEC_CTX *current_policy)
+{
+    TSS2_RC r = TSS2_RC_SUCCESS;
+    TPM2B_DIGEST *templateHash;
+    TPM2B_DIGEST computedTemplateHash;
+    size_t offset = 0;
+    size_t buffer_size = sizeof(TPMT_PUBLIC);
+    uint8_t buffer[buffer_size];
+    IFAPI_CRYPTO_CONTEXT_BLOB *cryptoContext = NULL;
+    size_t hash_size;
+
+    LOG_TRACE("call");
+
+    switch (current_policy->state) {
+    statecase(current_policy->state, POLICY_EXECUTE_INIT)
+
+        if (policy->templateHash.size) {
+            templateHash = &policy->templateHash;
+        } else {
+            /* Compute hash from templatePublic */
+
+            if (policy->derive) {
+                r = Tss2_MU_TPMT_PUBLIC_DERIVE_Marshal(&policy->templatePublic,
+                                                   buffer, buffer_size, &offset);
+                return_if_error(r, "Marshal templatePublic (derive)");
+            } else {
+                r = Tss2_MU_TPMT_PUBLIC_Marshal(&policy->templatePublic,
+                                                buffer, buffer_size, &offset);
+                return_if_error(r, "Marshal templatePublic.");
+            }
+            r = ifapi_crypto_hash_start(&cryptoContext, current_policy->hash_alg);
+            return_if_error(r, "crypto hash start");
+
+            HASH_UPDATE_BUFFER(cryptoContext, &buffer[0], offset, r, cleanup);
+            r = ifapi_crypto_hash_finish(&cryptoContext,
+                                         (uint8_t *) &computedTemplateHash.buffer[0],
+                                         &hash_size);
+            return_if_error(r, "crypto hash finish");
+
+            computedTemplateHash.size = hash_size;
+            templateHash = &computedTemplateHash;
+        }
+
+        /* Prepare the policy execution. */
+        r = Esys_PolicyTemplate_Async(esys_ctx,
+                                      current_policy->session,
+                                      ESYS_TR_NONE, ESYS_TR_NONE, ESYS_TR_NONE,
+                                      templateHash);
+        return_if_error(r, "Execute PolicyTemplate.");
+
+        fallthrough;
+
+    statecase(current_policy->state, POLICY_EXECUTE_FINISH)
+        /* Finalize the policy execution if possible. */
+        r = Esys_PolicyTemplate_Finish(esys_ctx);
+        try_again_or_error(r, "Execute PolicyTemplate_Finish.");
+
+        current_policy->state = POLICY_EXECUTE_INIT;
+        return r;
+
+    statecasedefault(current_policy->state);
+    }
+    return r;
+
+ cleanup:
+    if (cryptoContext)
+        ifapi_crypto_hash_abort(&cryptoContext);
+    return r;
+}
+
 /** Execute a policy for binding the policy to a certain locality.
  *
  * @param[in,out] *esys_ctx The ESAPI context which is needed to execute the
@@ -1561,6 +1649,12 @@ execute_policy_element(
                                    &policy->element.PolicyCpHash,
                                    current_policy);
         try_again_or_error_goto(r, "Execute policy cp hash", error);
+        break;
+    case POLICYTEMPLATE:
+        r = execute_policy_template(esys_ctx,
+                                   &policy->element.PolicyTemplate,
+                                   current_policy);
+        try_again_or_error_goto(r, "Execute policy template", error);
         break;
     case POLICYPHYSICALPRESENCE:
         r = execute_policy_physical_presence(esys_ctx,
