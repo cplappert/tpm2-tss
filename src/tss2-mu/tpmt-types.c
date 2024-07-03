@@ -589,6 +589,13 @@ TPMT_UNMARSHAL_6(TPMT_PUBLIC, type, Tss2_MU_UINT16_Unmarshal,
                  parameters, type, Tss2_MU_TPMU_PUBLIC_PARMS_Unmarshal,
                  unique, type, Tss2_MU_TPMU_PUBLIC_ID_Unmarshal)
 
+TPMT_MARSHAL_6(TPMT_PUBLIC_DERIVE, type, VAL, Tss2_MU_UINT16_Marshal,
+               nameAlg, VAL, Tss2_MU_UINT16_Marshal,
+               objectAttributes, VAL, Tss2_MU_TPMA_OBJECT_Marshal,
+               authPolicy, ADDR, Tss2_MU_TPM2B_DIGEST_Marshal,
+               parameters, ADDR, type, Tss2_MU_TPMU_PUBLIC_PARMS_Marshal,
+               unique, ADDR, type, Tss2_MU_TPMU_PUBLIC_ID_DERIVE_Marshal)
+
 TPMT_MARSHAL_2(TPMT_PUBLIC_PARMS, type, VAL, Tss2_MU_UINT16_Marshal,
                parameters, ADDR, type, Tss2_MU_TPMU_PUBLIC_PARMS_Marshal)
 

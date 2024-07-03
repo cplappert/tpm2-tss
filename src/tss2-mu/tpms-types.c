@@ -1129,6 +1129,10 @@ TPMS_UNMARSHAL_2(TPMS_ECC_POINT,
                  x, Tss2_MU_TPM2B_ECC_PARAMETER_Unmarshal,
                  y, Tss2_MU_TPM2B_ECC_PARAMETER_Unmarshal)
 
+TPMS_MARSHAL_2(TPMS_DERIVE,
+               label, ADDR, Tss2_MU_TPM2B_LABEL_Marshal,
+               context, ADDR, Tss2_MU_TPM2B_LABEL_Marshal)
+
 TPMS_MARSHAL_2(TPMS_SIGNATURE_RSA,
                hash, VAL, Tss2_MU_UINT16_Marshal,
                sig, ADDR, Tss2_MU_TPM2B_PUBLIC_KEY_RSA_Marshal)
